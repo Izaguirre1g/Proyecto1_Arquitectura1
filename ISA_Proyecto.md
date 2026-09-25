@@ -71,7 +71,7 @@ Fabricio Mena Mejia – 2019042722
   - [Registros de propósito general](#registros-de-propósito-general)
   - [Resumen de la arquitectura](#resumen-de-la-arquitectura)
   - [Diagrama de organización de la arquitectura](#diagrama-de-organización-de-la-arquitectura)
-  - [Contribuciones](#contribuciones)
+  - [Green card del ISA](#green-card-de-la-isa-del-proyecto-vliw)
 
 ---
 
@@ -1029,34 +1029,105 @@ Las resuelve el ensamblador
 
 ![Diagrama de organización de la arquitectura](img/diagrama_organizacion.png)
 
-## Contribuciones
+## Green card de la ISA del proyecto VLIW 
 
-**Javier:**
+Todas las instrucciones miden 32 bits: **Tipo de operación** [31:25] (7 bits) + **ID de operación** [24:21] (4 bits) + operandos (21 bits, según el tipo). Los campos de registro usan 5 bits (x0–x31).
 
-Mi aporte se centró en las instrucciones tipo control, desarrollando la codificación y documentación de igualsi, igualno, menora y mayoroigual, incluyendo formato, campos, operación y restricciones.
+## Instrucciones tipo almacenar
 
-También trabajé en la interpretación de la organización del procesador según la notación del libro, adaptándola a una representación segmentada de 5 etapas.
+| Mnemónico | Nombre | Descripción / ejemplo |
+|---|---|---|
+| `guardap` | Guardar palabra | `M(rf1+offset) = rf2[31:0]`. Ej.: `guardap x3, x8, 5` → si x3 = 0x20, guarda x8 en 0x25. |
+| `guardab` | Guardar byte | `M(rf1+offset) = rf2[7:0]`. Igual que `guardap` pero solo guarda el byte menos significativo. |
 
-**Fabricio:**
+## Instrucciones tipo inmediato
 
-Mi aporte fue la creación de la tabla **Resumen de la arquitectura** donde se detalla el parámetro seleccionado, su tamaño/valor, y una breve explicación de su selección.
+| Mnemónico | Nombre | Descripción / ejemplo |
+|---|---|---|
+| `sumai` | Suma con inmediato | `rg = rf1 + inm`. Ej.: rf1 = 10, inm = 5 → rg = 15. |
+| `restai` | Resta con inmediato | `rg = rf1 - inm`. Ej.: rf1 = 10, inm = 3 → rg = 7. |
+| `cizqi` | Corrimiento izquierdo inmediato | `rg = rf1 << inm`. Ej.: `00000101 << 2 = 00010100` (20). |
+| `cderi` | Corrimiento derecho lógico inmediato | `rg = rf1 >> inm`, rellena con ceros. Ej.: `00010100 >> 2 = 00000101` (5). |
+| `caderi` | Corrimiento aritmético derecho inmediato | `rg = rf1 >>> inm`, conserva el signo. Ej.: `11110000 >>> 2 = 11111100`. |
+| `xori` | XOR con inmediato | `rg = rf1 XOR inm`. Ej.: `1010 XOR 1100 = 0110`. |
+| `andi` | AND con inmediato | `rg = rf1 AND inm`. Ej.: `1010 AND 1100 = 1000`. |
+| `ori` | OR con inmediato | `rg = rf1 OR inm`. Ej.: `1010 OR 1100 = 1110`. |
+| `cargai` | Cargar palabra | `rg = M[rf1 + inm]`. Ej.: rf1 = 1000, inm = 20 → rg = M[1020]. |
+| `cargabai` | Cargar byte | `rg = M8[rf1 + inm]`. Ej.: rf1 = 2000, inm = 4, M[2004] = 0x7F → rg = 0x7F. |
 
-Además de la selección de las pseudoinstrucciones soportadas (tabla **Pseudoinstrucciones**) según las instrucciones actuales del ISA.
+## Instrucciones tipo salto
 
-También realicé la tabla **Registros de propósito general** con los registros disponibles y su convención de uso para nuestro ISA.
+| Mnemónico | Nombre | Descripción / ejemplo |
+|---|---|---|
+| `sye` | Saltar y enlazar | `rg = PC + 4; PC = PC + offset` (offset de 16 bits con signo, −32768 a 32767). Ej.: PC = 1000, offset = 20 → rg = 1004, PC = 1020. |
 
-**Dylan:**
+## Instrucciones tipo control
 
-Mi aporte fue el desarrollo de la codificación de las instrucciones tipo almacenamiento con un campo de tipo de 7 bits, un ID de operación de 4 bits (estos siendo definidos en acuerdo con todo el equipo tanto en su tamaño como posición), dos registros fuente con un campo de 5 bits para representar los 32 registros posibles y un campo de offset de 11 bits. Además dejé ejemplos de cómo se vería un código en ensamblador de dichas instrucciones
+| Mnemónico | Nombre | Descripción / ejemplo |
+|---|---|---|
+| `igualsi` | Saltar si igual | `if (rf1 == rf2) PC += inm`. Ej.: `igualsi rf1=3, rf2=4, inmediato=4`. |
+| `igualno` | Saltar si no es igual | `if (rf1 != rf2) PC += inm`. Ej.: `igualno rf1=5, rf2=6, inmediato=6`. |
+| `menora` | Saltar si menor | `if (rf1 < rf2) PC += inm`. Ej.: `menora rf1=7, rf2=8, inmediato=3`. |
+| `mayoroigual` | Saltar si mayor o igual | `if (rf1 >= rf2) PC += inm`. Ej.: `mayoroigual rf1=9, rf2=10, inmediato=5`. |
 
-También contribuí en la organización de la arquitectura del procesador junto con Javier con el objetivo de implementar un pipeline de 5 etapas y mostrar como se conectan los diferentes componentes de la arquitectura unos con otros
+## Instrucciones tipo registro
 
-**Alejandro:**
+| Mnemónico | Nombre | Descripción / ejemplo |
+|---|---|---|
+| `suma` | Suma | `rg = rf1 + rf2`. |
+| `resta` | Resta | `rg = rf1 - rf2`. |
+| `cizq` | Corrimiento izquierdo | `rg = rf1 << rf2`. Ej.: rf1 = 5, rf2 = 2 → rg = 20. |
+| `cder` | Corrimiento derecho lógico | `rg = rf1 >> rf2`, rellena con ceros. Ej.: rf1 = 20, rf2 = 2 → rg = 5. |
+| `cader` | Corrimiento aritmético derecho | `rg = rf1 >>> rf2`, conserva el signo. Ej.: rf1 = −8, rf2 = 2 → rg = −2. |
+| `xor` | XOR | `rg = rf1 XOR rf2`. Ej.: `1010 XOR 1100 = 0110`. |
+| `and` | AND | `rg = rf1 AND rf2`. Ej.: `1010 AND 1100 = 1000` (8). |
+| `or` | OR | `rg = rf1 OR rf2`. Ej.: `1010 OR 1100 = 1110` (14). |
+| `mrq` | Menor que | `rg = (rf1 < rf2) ? 1 : 0`. Ej.: rf1 = 5, rf2 = 10 → rg = 1. |
+| `myq` | Mayor que | `rg = (rf1 > rf2) ? 1 : 0`. Ej.: rf1 = 10, rf2 = 5 → rg = 1. |
 
-Mi aporte fue la estructura del set de instrucciones de la unidad criptográfica. Principalmente fue definir la organización del slot (prefijo tipo 7 bits + ID operación de 4 bits, con 21 bits para operandos físicos) y proponer las instrucciones que lo componen: FSL y FSLI para las rondas Feistel (cifrado y descifrado de una ronda por invocación, exponiendo paralelismo entre slots), ELL para escribir llaves en la bóveda, VCR para validar credenciales comparando contra la contraseña maestra que reside en la bóveda, CAMCON para renovar dicha contraseña mediante rotación lógica circular, y SETPWD para inicializarla al arranque. Decidí también cómo se distribuyen los operandos en cada slot (por ejemplo, el inmediato de rotación en CAMCON o la dirección del candidato y el resultado implícito en `ESTADO[0]` para VCR), buscando que la cripto FU pueda operar **sin** pasar datos sensibles por buses de propósito general. También definí la política de control de acceso mediante `ESTADO[0]` (bit AUTH): sólo código autenticado puede ejecutar `fsl`/`fsli`/`ell`/`camcom`; el resto genera excepción de privilegio.
+## Instrucciones tipo cripto
 
-**José:**
+| Mnemónico | Nombre | Descripción / ejemplo |
+|---|---|---|
+| `fsl` | Ronda Feistel | `(L_out, R_out) = feistel_round((L_in, R_in), LK, RK)`; lee el par (r1, r1+1) y escribe (rd, rd+1). Ej.: `fsl rd=6, r1=2, LK=0, RK=1`. |
+| `fsli` | Ronda Feistel inversa | Igual que `fsl` pero aplica las subllaves en orden inverso (descifrado). Ej.: `fsli rd=6, r1=2, LK=0, RK=3`. |
+| `ell` | Escribir llave en la bóveda | `bóveda[LK][off..off+1] = (rs1, rs2)`, escribe 64 bits. Ej.: `ell LK=2, off=0, rs1=4, rs2=6` y `ell LK=2, off=2, rs1=8, rs2=10` cargan la llave completa. |
+| `vcr` | Validar credenciales | `M[dir_flag] = (M[dir_cand] == M[x16])`. Ej.: `vcr dir_cand=0x2000, dir_flag=0x0001`. |
+| `camcon` | Cambiar contraseña | `M[dir] = ROL(M[dir], imm)`, requiere autenticación previa. Ej.: `camcon dir=0x0010, imm=7`. |
+| `csi` | Carga segura izquierda | `rd = bóveda[LK][off].izq`. Ej.: `csi rd=3, LK=1, off=2`. |
+| `csd` | Carga segura derecha | `rd = bóveda[LK][off].der`. Ej.: `csd rd=4, LK=1, off=2`. |
+| `setpwd` | Inicializar contraseña | `M[dir] = rs`, solo si el procesador no está autenticado. Ej.: `setpwd rs=5, dir=0x0010`. |
 
-Mi aporte se centró en la especificación de las instrucciones tipo registro-registro e inmediato del ISA. A partir del formato de 32 bits definido, desarrollé la documentación de las operaciones, detallando la codificación de cada instrucción.
+## Pseudoinstrucciones
 
-Para cada instrucción se describí su operación, formato en ensamblador y ejemplos de funcionamiento, mostrando la interacción entre los registros fuente, registros destino y valores inmediatos. Además, se explicó la forma en que estas instrucciones modifican los datos almacenados en los registros o permiten acceder a posiciones específicas de memoria mediante cálculos de dirección. También realicé la de salto (sye).
+| Mnemónico | Nombre | Descripción / ejemplo |
+|---|---|---|
+| `nop` | No operación | Se codifica como `0x00000000`. |
+| `mov` | Mover | `mov rg, rf1` → `suma rg, rf1, x0`. |
+| `not` | Negación bit a bit | `not rg, rf1` → `xori rg, rf1, -1`. |
+
+## Codificación por tipo
+
+| Tipo de instrucción | Tipo (7 bits) | Formato | IDs |
+|---|---|---|---|
+| Almacenar | `1001001` | Tipo \| ID \| rf1 [20:16] \| rf2 [15:11] \| offset [10:0] | guardap 0000, guardab 0001 |
+| Inmediato | `1000000` | Tipo \| ID \| rf1 [20:16] \| rg [15:11] \| inm [10:0] | sumai 0000, restai 0001, cizqi 0010, cderi 0011, caderi 0100, xori 0101, andi 0110, ori 0111, cargai 1000, cargabai 1001 |
+| Salto | `1001011` | Tipo \| ID \| rg [20:16] \| offset [15:0] | sye 0000 |
+| Control | `1000001` | Tipo \| ID \| rf1 [20:16] \| rf2 [15:11] \| inm [10:0] | igualsi 0001, igualno 0010, menora 0100, mayoroigual 1000 |
+| Registro | `1101010` | Tipo \| ID \| rg [20:16] \| rf1 [15:11] \| rf2 [10:6] | suma 1000, resta 1001, cizq 1011, cder 1111, cader 1010, xor 1110, and 1100, or 1101, mrq 1011, myq 0110 |
+| Cripto | `0000010` | Tipo \| ID \| LK [20:19] \| RK/off [18:17] \| rd [16:12] \| r1 [11:7] \| RSV [6:0] | fsl 0000, fsli 0001, ell 0010, vcr 0011, camcon 0100, csi 0101, csd 0110, setpwd 0111 |
+
+`vcr`, `camcon` y `setpwd` usan: Tipo \| ID \| dir [20:5] \| dir_flag / imm / rs [4:0].
+
+## Registros
+
+| Registro | ABI | Uso |
+|---|---|---|
+| x0 | cero | Constante 0 |
+| x1 | ra | Dirección de retorno (`sye`) |
+| x2 | sp | Puntero de pila |
+| x3 | gp | Puntero global |
+| x4–x15 | t0–t11 | Temporales |
+| x16–x31 | s0–s15 | Preservados entre llamadas |
+
+
