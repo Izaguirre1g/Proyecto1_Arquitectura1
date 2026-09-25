@@ -824,9 +824,9 @@ La distribución de los campos es la siguiente:
 | 1101010 | 1111 | `corrimiento derecho` | rg = rf1 >> rf2 |
 | 1101010 | 1010 | `corrimiento aritmetico derecho` | rg = rf1 >> rf2 |
 | 1101010<br>1101010 | 1110 | `xor` | rg = rf1 XOR rf2 |
-| 1101010 | 1110 | `and` | rg = rf1&rf2 |
+| 1101010 | 1100 | `and` | rg = rf1&rf2 |
 | 1101010 | 1101 | `or` | rg = rf1\|rf2 |
-| 1101010 | 1011 | `mrq` | rg = rf1<rf2 |
+| 1101010 | 0101 | `mrq` | rg = rf1<rf2 |
 | 1101010 | 0110 | `myq` | rg = rf1>rf2 |
 
 ### Explicación de las instrucciones
