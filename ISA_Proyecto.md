@@ -28,30 +28,46 @@ Fabricio Mena Mejia – 2019042722
 
 ## Contenido
 
-- [Justificación General](#justificación-general)
-- [Instrucciones tipo almacenar](#instrucciones-tipo-almacenar)
-  - [Explicación de las instrucciones](#explicación-de-las-instrucciones)
-  - [Justificación de diseño](#justificación-de-diseño)
-- [Instrucciones tipo inmediato](#instrucciones-tipo-inmediato)
-  - [Explicación de las instrucciones](#explicación-de-las-instrucciones-1)
-  - [Justificación de diseño](#justificación-de-diseño-1)
-- [Instrucciones tipo salto](#instrucciones-tipo-salto)
-  - [Explicación de las instrucciones](#explicación-de-las-instrucciones-2)
-  - [Justificación de diseño](#justificación-de-diseño-2)
-- [Instrucciones tipo cripto](#instrucciones-tipo-cripto)
-  - [Justificación](#justificación)
-  - [Explicación de las instrucciones](#explicación-de-las-instrucciones-3)
-- [Instrucciones tipo control](#instrucciones-tipo-control)
-  - [Justificación](#justificación-1)
-  - [Explicación de las instrucciones](#explicación-de-las-instrucciones-4)
-- [Instrucciones tipo Registro](#instrucciones-tipo-registro)
-  - [Explicación de las instrucciones](#explicación-de-las-instrucciones-5)
-  - [Justificación](#justificación-2)
-- [Pseudoinstrucciones:](#pseudoinstrucciones)
-- [Registros de propósito general](#registros-de-propósito-general)
-- [Resumen de la arquitectura](#resumen-de-la-arquitectura)
-- [Diagrama de organización de la arquitectura](#diagrama-de-organización-de-la-arquitectura)
-- [Contribuciones](#contribuciones)
+- [Avance 2 ISA](#avance-2-isa)
+  - [Contenido](#contenido)
+  - [Justificación General](#justificación-general)
+  - [Instrucciones tipo almacenar](#instrucciones-tipo-almacenar)
+    - [Explicación de las instrucciones](#explicación-de-las-instrucciones)
+    - [Justificación de diseño](#justificación-de-diseño)
+  - [Instrucciones tipo inmediato](#instrucciones-tipo-inmediato)
+    - [Explicación de las instrucciones](#explicación-de-las-instrucciones-1)
+    - [Justificación de diseño](#justificación-de-diseño-1)
+  - [Instrucciones tipo salto](#instrucciones-tipo-salto)
+    - [Explicación de las instrucciones](#explicación-de-las-instrucciones-2)
+      - [Tamaño máximo del salto](#tamaño-máximo-del-salto)
+    - [Justificación de diseño](#justificación-de-diseño-2)
+  - [Instrucciones tipo cripto](#instrucciones-tipo-cripto)
+    - [Política de autenticación y control de acceso](#política-de-autenticación-y-control-de-acceso)
+      - [Restricción de uso por instrucción](#restricción-de-uso-por-instrucción)
+      - [Flujo de autenticación típico](#flujo-de-autenticación-típico)
+    - [Justificación](#justificación)
+    - [Explicación de las instrucciones](#explicación-de-las-instrucciones-3)
+      - [`fsl`](#fsl)
+      - [`fsli`](#fsli)
+      - [`ell`](#ell)
+      - [`vcr`](#vcr)
+      - [`camcon`](#camcon)
+      - [`setpwd`](#setpwd)
+  - [Instrucciones tipo control](#instrucciones-tipo-control)
+    - [Justificación](#justificación-1)
+    - [Explicación de las instrucciones](#explicación-de-las-instrucciones-4)
+      - [Instrucción `igualsi`:](#instrucción-igualsi)
+      - [Instrucción `igualno`:](#instrucción-igualno)
+      - [Instrucción menora:](#instrucción-menora)
+      - [Instrucción `mayoroigual`](#instrucción-mayoroigual)
+  - [Instrucciones tipo Registro](#instrucciones-tipo-registro)
+    - [Explicación de las instrucciones](#explicación-de-las-instrucciones-5)
+    - [Justificación](#justificación-2)
+  - [Pseudoinstrucciones:](#pseudoinstrucciones)
+  - [Registros de propósito general](#registros-de-propósito-general)
+  - [Resumen de la arquitectura](#resumen-de-la-arquitectura)
+  - [Diagrama de organización de la arquitectura](#diagrama-de-organización-de-la-arquitectura)
+  - [Contribuciones](#contribuciones)
 
 ---
 
@@ -355,6 +371,40 @@ Tanto el campo de tipo de operación como el ID de esta se mantienen en el mismo
 
 ## Instrucciones tipo cripto
 
+### Política de autenticación y control de acceso
+
+El procesador mantiene un **registro de estado `ESTADO`** de 32 bits. De ellos, sólo el bit menos significativo (`ESTADO[0]`, en adelante "bit AUTH") define si el procesador se encuentra autenticado frente a la bóveda de llaves:
+
+| Bit | Nombre | Significado |
+|:---|:---|:---|
+| `ESTADO[0]` | AUTH | `1` = autenticado, `0` = no autenticado. |
+| `ESTADO[31:1]` | — | Reservados (siempre `0`). |
+
+El bit AUTH **no es accesible** mediante instrucciones de carga/almacenamiento a memoria ni mediante lectura a registros de propósito general; sólo puede ser alterado por las instrucciones privilegiadas de la unidad criptográfica que se describen más adelante. Esto refuerza el aislamiento de la bóveda (Sección 4.4.1).
+
+#### Restricción de uso por instrucción
+
+| Instrucción | ¿Requiere `AUTH = 1`? | Si falta AUTH |
+|:---|:---:|:---|
+| `vcr` | No (es la vía de autenticación) | n/a |
+| `setpwd` | **Requiere `AUTH = 0`** (sólo en arranque, antes de autenticar) | Excepción |
+| `ell` | Sí | Excepción (sin escribir en bóveda) |
+| `camcom` | Sí | Excepción (sin rotar la contraseña) |
+| `fsl`, `fsli` | Sí | Excepción (sin consumir subllave) |
+
+Cualquier intento de ejecutar una instrucción que requiera autenticación sin tener `AUTH = 1` genera una **excepción de privilegio** (trap de seguridad). La excepción detiene la ejecución del bundle actual y transfiere el control a una dirección de manejo a definir en la microarquitectura.
+
+#### Flujo de autenticación típico
+
+1. **Arranque:** el procesador parte con `AUTH = 0`. El código de boot puede invocar `setpwd` una sola vez para cargar la contraseña maestra en la bóveda desde un registro (típicamente `x16`).
+2. **Validación:** `vcr` compara la contraseña candidata en memoria contra la real de la bóveda. Si coinciden, pone `AUTH = 1`; si no, mantiene `AUTH = 0`. El resultado se actualiza únicamente en `ESTADO[0]`, **no** se escribe a memoria ni a registros.
+3. **Uso:** una vez autenticado, el programa puede invocar `ell`, `camcom`, `fsl` y `fsli`. Cualquier intento de bypass produce excepción.
+4. **Bloqueo:** si se desea revocar el acceso, basta con sobrescribir manualmente el bit `AUTH = 0` mediante una futura instrucción de logout (a definir en extensión).
+
+Esta política garantiza que las subllaves nunca abandonen la bóveda por buses de propósito general y que sólo código autenticado puede consumirlas.
+
+
+
 | [31:25] | [24:21] | [20:19] | [18:17] | [16:12] | [11:7] | [6:0] |
 |:---:|:---:|:---:|:---:|:---:|:---:|:---:|
 | **Tipo de operación** | **ID operación** | **LK** | **RK** | **rd** | **r1** | **RSV** |
@@ -375,10 +425,10 @@ La distribución de los campos es la siguiente:
 | 0000010 | 0000 | `fsl` | (L_out, R_out) = feistel_round((L_in, R_in), LK, RK) |
 | 0000010 | 0001 | `fsli` | (L_out, R_out) = feistel_round_inv((L_in, R_in), LK, RK) |
 | 0000010 | 0010 | `ell` | bóveda[LK][off..off+1] = (rs1, rs2) |
-| 0000010 | 0011 | `vcr` | mem[dir_flag] = (mem[dir_cand] == mem[x16]) |
+| 0000010 | 0011 | `vcr` | actualiza ESTADO con (mem[dir_cand] == mem[dir_real]) |
 | 0000010 | 0100 | `camcom` | mem[dir] = ROL(mem[dir], imm) |
-| 0000010 | 0101 | `csi` | rd = bóveda[LK][off].izq |
-| 0000010 | 0110 | `csd` | rd = bóveda[LK][off].der |
+| 0000010 | 0101 | `setpwd` | dir_contraseña_real = rf (solo en arranque, sin autenticar) |
+| 0000010 | 0110–1111 | — | reservados |
 
 ### Justificación
 
@@ -388,12 +438,11 @@ Para `fsl` y `fsli` se eligió ejecutar una ronda por instrucción, no las cuatr
 
 `ell` se eligió escribir 64 bits por invocación, dos palabras con rs1 y rs2, en lugar de 32 bits. Esto reduce el número de instrucciones necesarias para cargar una llave completa de 4 a 2, sin superar los 21 bits disponibles.
 
-`VCR`, la validación de credenciales, toma un flag y la contraseña candidata en memoria, no en registros, así permite una autenticación visible por software sin exponer registros internos. `x16` se utiliza como puntero a la contraseña real, reforzando el aislamiento, el dato sensible nunca viaja por buses de propósito general.
+`vcr`, la validación de credenciales, compara la contraseña candidata (en memoria) directamente contra la contraseña real residente en la bóveda, **sin** pasar la contraseña real por buses de propósito general ni por registros: el dato sensible nunca abandona el hardware de la cripto FU. El resultado de la comparación sólo se refleja en el bit `AUTH` interno (`ESTADO[0]`), sin escribir a memoria de propósito general.
 
-`camcom`, el cambio de contraseña recibe un inmediato de n bits con la cantidad de corrimientos a aplicar sobre la contraseña actual. Codificarlo como inmediato es compacto y natural para una rotación lógica circular.
+`camcom`, el cambio de contraseña recibe un inmediato de n bits con la cantidad de corrimientos a aplicar sobre la contraseña actual. Codificarlo como inmediato es práctico para una rotación lógica circular.
 
-`csi` y `csd` (carga segura de llaves) corresponden a las únicas instrucciones que mueven datos desde la bóveda hacia los registros (palabra izquierda y derecha respectivamente), su espacio reservado permite una ampliación futura en caso de ser necesario.
-
+**Nota de aislamiento:** las subllaves únicamente salen de la bóveda de manera implícita al ejecutarse `fsl`/`fsli`; no existen instrucciones que copien contenido de la bóveda a registros de propósito general ni a memoria. 
 ### Explicación de las instrucciones
 
 #### `fsl`
@@ -411,7 +460,7 @@ Descripción de campos:
 
 | Campo | Bits | Significado |
 |:---|:---|:---|
-| Tipo | [31:25] | 0000000 — identifica la UF Cripto |
+| Tipo | [31:25] | 0000010 — identifica la UF Cripto |
 | ID | [24:21] | 0000 — opcode de FSL |
 | LK | [20:19] | Índice de llave en la bóveda (0–3) |
 | RK | [18:17] | Índice de subllave dentro de la llave (0–3) |
@@ -427,6 +476,7 @@ fsl rd=6, r1=2, LK=0, RK=1
 
 Restricciones:
 
+- Requiere `ESTADO[0] = AUTH = 1`; en caso contrario genera **excepción de privilegio**.
 - `rg` y `rf1` deben estar en registros pared a partir de `x2` (registros de la cripto FU).
 - `LK` ∈ {0,1,2,3} y `RK` ∈ {0,1,2,3}.
 - La subllave se lee internamente de la bóveda; nunca abandona la bóveda.
@@ -446,7 +496,7 @@ Descripción de campos:
 
 | Campo | Bits | Significado |
 |:---|:---|:---|
-| Tipo | [31:25] | 0000000 |
+| Tipo | [31:25] | 0000010 |
 | ID | [24:21] | 0001 — opcode de FSLI |
 | LK | [20:19] | Índice de llave en la bóveda (0–3) |
 | RK | [18:17] | Índice de subllave dentro de la llave (0–3) |
@@ -462,6 +512,7 @@ fsli  rd=6, r1=2, LK=0, RK=3
 
 Restricciones:
 
+- Requiere `ESTADO[0] = AUTH = 1`; en caso contrario genera **excepción de privilegio**.
 - `rg` y `rf1` deben estar en registros pares.
 - `LK` ∈ {0,1,2,3} y RK ∈ {0,1,2,3}.
 
@@ -480,7 +531,7 @@ Descripción de campos:
 
 | Campo | Bits | Significado |
 |:---|:---|:---|
-| Tipo | [31:25] | 0000000 |
+| Tipo | [31:25] | 0000010 |
 | ID | [24:21] | 0010 — opcode de ELL |
 | LK | [20:19] | Índice de llave destino en la bóveda (0–3) |
 | off | [18:17] | Offset dentro de la llave (0 = MSW, 3 = LSW) |
@@ -498,44 +549,43 @@ ell    LK=2, off=2, rs1=8, rs2=10
 
 Restricciones:
 
+- Requiere `ESTADO[0] = AUTH = 1`; en caso contrario genera **excepción de privilegio**.
 - `rf1` y `rf2` pueden ser cualquier registro par.
 - `LK` ∈ {0,1,2,3} y `off` ∈ {0,2} para no desbordar la llave.
 
 #### `vcr`
 
-Descripción: Compara la contraseña candidata contra la contraseña real (ambas en memoria) y escribe el resultado en el flag de autenticación.
+Descripción: Compara la contraseña candidata contra la contraseña real y actualiza el bit `AUTH` del registro `ESTADO` en consecuencia: `AUTH = 1` si coinciden, `AUTH = 0` en caso contrario. El resultado nunca se escribe a memoria de propósito general ni a registros; sólo modifica el bit interno `ESTADO[0]`.
 
 Formato:
 
 | 31:25 | 24:21 | 20:5 | 4:0 |
 |:---:|:---:|:---:|:---:|
-| **Tipo** | **ID** | **dir_cand** | **dir_flag** |
+| **Tipo** | **ID** | **dir_cand** | **RSV** |
 | 7 bits | 4 bits | 16 bits | 5 bits |
 
 Descripción de campos:
 
 | Campo | Bits | Significado |
 |:---|:---|:---|
-| Tipo | [31:25] | 0000000 |
+| Tipo | [31:25] | 0000010 |
 | ID | [24:21] | 0011 — opcode de VCR |
 | dir_cand | [20:5] | Dirección de memoria de la contraseña candidata (0–65535) |
-| dir_flag | [4:0] | Dirección de memoria del flag en reg impar |
-| x16 (implícito) | — | Puntero a la contraseña real en memoria |
+| RSV | [4:0] | 00000 — reservados |
+| contraseña real | — | implícita en la bóveda |
 
 Ejemplo en ensamblador:
 
 ```
 # Validar contraseña candidata en mem[0x2000]
-# contra la real apuntada por x16
-# escribir flag en mem[0x0001]
-vcr    dir_cand=0x2000, dir_flag=0x0001
+# contra la real guardada en la bóveda
+vcr    dir_cand=0x2000
 ```
 
 Restricciones:
 
+- `vcr` se puede invocar siempre, esté o no autenticado el procesador: es la única vía de autenticación.
 - `dir_cand` ∈ [0, 65535] (cubre toda la memoria de 64 KB).
-- `dir_flag` ∈ impar (espacio reservado para flags).
-- `x16` debe estar inicializado con la dirección de la contraseña real.
 
 #### `camcon`
 
@@ -552,7 +602,7 @@ Descripción de campos:
 
 | Campo | Bits | Significado |
 |:---|:---|:---|
-| Tipo | [31:25] | 0000000 |
+| Tipo | [31:25] | 0000010 |
 | ID | [24:21] | 0100 — opcode de CAMCON |
 | dir | [20:5] | Dirección de memoria de la contraseña actual (0–65535) |
 | imm | [4:0] | Cantidad de corrimientos a la izquierda (0–31) |
@@ -566,80 +616,12 @@ camcon   dir=0x0010, imm=7
 
 Restricciones:
 
-- Requiere autenticación previa. Si el flag no está activo, genera excepción.
+- Requiere `ESTADO[0] = AUTH = 1`; en caso contrario genera **excepción de privilegio**.
 - `imm` ∈ [0, 31].
-
-#### `csi`
-
-Descripción: Carga la palabra izquierda (32 bits) de una subllave de la bóveda hacia un registro del banco cripto. Es una de las pocas instrucciones que extrae datos de la bóveda.
-
-**Formato:**
-
-| 31:25 | 24:21 | 20:19 | 18:17 | 16:12 | 11:0 |
-|:---:|:---:|:---:|:---:|:---:|:---:|
-| **Tipo** | **ID** | **LK** | **off** | **rd** | **RSV** |
-| 7 bits | 4 bits | 2 bits | 2 bits | 5 bits | 12 bits |
-
-Descripción de campos:
-
-| Campo | Bits | Significado |
-|:---|:---|:---|
-| Tipo | [31:25] | 0000000 |
-| ID | [24:21] | 0101 — opcode de CSI |
-| LK | [20:19] | Índice de llave en la bóveda (0–3) |
-| off | [18:17] | Índice de subllave dentro de la llave (0–3) |
-| rg | [16:12] | Registro destino (32 bits) |
-| RSV | [11:0] | 000000000000 — reservados |
-
-Ejemplo en ensamblador:
-
-```
-# Cargar la palabra izquierda de la subllave 2 de la llave 1
-csi    rd=3, LK=1, off=2
-```
-
-Restricciones:
-
-- `rd` debe estar en registros pares.
-- `LK` ∈ {0,1,2,3} y `off` ∈ {0,1,2,3}.
-
-#### `csd`
-
-Descripción: Carga la palabra derecha (32 bits) de una subllave de la bóveda hacia un registro del banco cripto.
-
-Formato:
-
-| 31:25 | 24:21 | 20:19 | 18:17 | 16:12 | 11:0 |
-|:---:|:---:|:---:|:---:|:---:|:---:|
-| **Tipo** | **ID** | **LK** | **off** | **rd** | **RSV** |
-| 7 bits | 4 bits | 2 bits | 2 bits | 5 bits | 12 bits |
-
-Descripción de campos:
-
-| Campo | Bits | Significado |
-|:---|:---|:---|
-| Tipo | [31:25] | 0000000 |
-| ID | [24:21] | 0110 — opcode de CSD |
-| LK | [20:19] | Índice de llave en la bóveda (0–3) |
-| off | [18:17] | Índice de subllave dentro de la llave (0–3) |
-| rg | [16:12] | Registro destino (32 bits) |
-| RSV | [11:0] | 000000000000 — reservados |
-
-Ejemplo en ensamblador:
-
-```
-# Cargar la palabra derecha de la subllave 2 de la llave 1
-csd    rd=4, LK=1, off=2
-```
-
-Restricciones:
-
-- `rg` debe estar en `reg pares`.
-- `lk` ∈ {0,1,2,3} y `off` ∈ {0,1,2,3}.
 
 #### `setpwd`
 
-Descripción: Inicializa la contraseña en memoria desde un registro fuente. Es la única vía para que la cripto FU deposite la contraseña maestra en memoria al arrancar el sistema.
+Descripción: Inicializa la contraseña en la bóveda desde un registro fuente al arrancar el sistema. Es la única vía para depositar la contraseña maestra.
 
 Formato:
 
@@ -652,7 +634,7 @@ Descripción de campos:
 
 | Campo | Bits | Significado |
 |:---|:---|:---|
-| Tipo | [31:25] | 0000000 |
+| Tipo | [31:25] | 0000010 |
 | ID | [24:21] | 0111 — opcode de SETPWD |
 | dir | [20:5] | Dirección de memoria destino (0–65535) |
 | rf | [4:0] | Registro fuente con la contraseña inicial (32 bits) |
@@ -667,8 +649,8 @@ movi     x16, 0x0010
 
 Restricciones:
 
-- Solo se permite cuando el procesador NO está autenticado (para inicializar). Genera excepción si se viola.
-- `rf` debe ser `x16`.
+- Sólo se permite cuando `ESTADO[0] = AUTH = 0` (camino de inicialización en arranque). Si el procesador ya está autenticado genera **excepción de privilegio**.
+- El campo `rf` se ignora a nivel arquitectónico; el valor se toma del registro `x16` por convención para reforzar el aislamiento.
 
 ## Instrucciones tipo control
 
@@ -991,7 +973,7 @@ Las resuelve el ensamblador
 | Slots por bundle | 4 (fijos) | Mínimo del enunciado; un slot por tipo de unidad funcional. |
 | Ancho de bundle | 128 bits (16 bytes) | Potencia de 2: el PC avanza 16 bytes y el fetch lee una línea alineada. |
 | Asignación de slots | Slot 0 = ALU · Slot 1 = LSU · Slot 2 = BRU · Slot 3 = CRIPTO | Esquema de slots fijos: el despacho no necesita campo de selección. |
-| NOP | 0x00000000 en cualquier slot | Memoria en cero = bundles NOP; decodificación trivial (TIPO = 0000000). |
+| NOP | 0x00000000 en cualquier slot | El `TIPO = 0000000` no se usa por ninguna FU activa (ALU=1000000/1101010, LSU=1001001, BRU=1000001/1001011, Cripto=0000010), por lo que el decodificador lo reconoce como NOP en cualquier slot sin invocar ninguna unidad funcional. |
 | Registros | 32 × 32 bits (x0–x31), x0 = 0 | Campos de 5 bits; x0 constante. |
 | PC | 32 bits, alineado a 16 bytes | Direccionamiento por byte, bundle alineado. |
 | Registro de estado | ESTADO (32 bits) | Autenticación. |
@@ -1027,7 +1009,7 @@ También contribuí en la organización de la arquitectura del procesador junto 
 
 **Alejandro:**
 
-Mi aporte fue la estructura del set de instrucciones de la unidad critográfica. Principalmente fue definir la organización del slot (prefijo tipo 7 bits + ID operación de 4 bits, con 21 bits para operandos físicos) y proponer las 8 instrucciones que lo componen: FSL y FSLI para las rondas Feistel, ELL para escribir las llaves en la bóveda, CSI y CSD para extraer subllaves hacia registros, VCR para validar credenciales contra la contraseña almacenada en memoria, CAMCON para renovar la contraseña mediante rotación lógica circular, y SETPWD para inicializarla. Decidí también cómo se distribuyen los operandos en cada slot (por ejemplo, el inmediato de rotación en CAMCOM o el par de direcciones candidatas y de flag en VCR), buscando que la cripto FU pueda operar sin pasar datos sensibles por el bus de memoria general.
+Mi aporte fue la estructura del set de instrucciones de la unidad criptográfica. Principalmente fue definir la organización del slot (prefijo tipo 7 bits + ID operación de 4 bits, con 21 bits para operandos físicos) y proponer las instrucciones que lo componen: FSL y FSLI para las rondas Feistel (cifrado y descifrado de una ronda por invocación, exponiendo paralelismo entre slots), ELL para escribir llaves en la bóveda, VCR para validar credenciales comparando contra la contraseña maestra que reside en la bóveda, CAMCON para renovar dicha contraseña mediante rotación lógica circular, y SETPWD para inicializarla al arranque. Decidí también cómo se distribuyen los operandos en cada slot (por ejemplo, el inmediato de rotación en CAMCON o la dirección del candidato y el resultado implícito en `ESTADO[0]` para VCR), buscando que la cripto FU pueda operar **sin** pasar datos sensibles por buses de propósito general. También definí la política de control de acceso mediante `ESTADO[0]` (bit AUTH): sólo código autenticado puede ejecutar `fsl`/`fsli`/`ell`/`camcom`; el resto genera excepción de privilegio.
 
 **José:**
 
