@@ -31,6 +31,8 @@ Fabricio Mena Mejia – 2019042722
 - [Avance 2 ISA](#avance-2-isa)
   - [Contenido](#contenido)
   - [Justificación General](#justificación-general)
+    - [Convención de comparaciones y de signo (aplica a todo el ISA)](#convención-de-comparaciones-y-de-signo-aplica-a-todo-el-isa)
+      - [Justificación de la convención](#justificación-de-la-convención)
   - [Instrucciones tipo almacenar](#instrucciones-tipo-almacenar)
     - [Explicación de las instrucciones](#explicación-de-las-instrucciones)
     - [Justificación de diseño](#justificación-de-diseño)
@@ -55,6 +57,8 @@ Fabricio Mena Mejia – 2019042722
       - [`setpwd`](#setpwd)
   - [Instrucciones tipo control](#instrucciones-tipo-control)
     - [Justificación](#justificación-1)
+    - [Estrategia frente a saltos](#estrategia-frente-a-saltos)
+      - [Justificación de la elección](#justificación-de-la-elección)
     - [Explicación de las instrucciones](#explicación-de-las-instrucciones-4)
       - [Instrucción `igualsi`:](#instrucción-igualsi)
       - [Instrucción `igualno`:](#instrucción-igualno)
@@ -80,6 +84,20 @@ Como estructura general, las instrucciones utilizan un prefijo compuesto por un 
 Los campos destinados a registros utilizan **5 bits**, permitiendo identificar hasta 32 registros diferentes. Aunque la arquitectura requiere como mínimo 15 registros de propósito general, se optó por un banco de registros mayor para proporcionar mayor flexibilidad al software.
 
 Los bits restantes de cada formato se asignan de acuerdo con los operandos y parámetros requeridos por cada unidad funcional. Por esta razón, **no todos los tipos de instrucción utilizan exactamente los mismos campos.**
+
+### Convención de comparaciones y de signo (aplica a todo el ISA)
+
+Todos los valores que las instrucciones de esta arquitectura comparan se interpretan como enteros de 32 bits con signo, en representación de complemento a dos. La convención es única para todo el ISA y se define aquí una sola vez; las secciones de cada tipo de instrucción no vuelven a fijarla, solamente la aplican. Cubre las instrucciones de control de flujo que comparan dos registros (menora y mayoroigual), las instrucciones de tipo registro que producen un resultado booleano (mrq y myq) y el corrimiento aritmético derecho (caderi), que replica el bit de signo en lugar de rellenar con ceros.
+
+Los inmediatos y los offsets de 11 y 16 bits también se interpretan con signo y se extienden con signo a 32 bits antes de operar. Quedan fuera de la convención, por ser magnitudes sin signo por construcción, únicamente los campos que indican una cantidad de posiciones de desplazamiento, los índices de llave (LK), de ronda (RK) y de palabra (off) de las instrucciones criptográficas, y los campos de dirección absoluta de 16 bits de esas mismas instrucciones (por ejemplo dir_cand de vcr), que cubren el rango 0–65535 de la memoria.
+
+#### Justificación de la convención
+
+a) El complemento a dos es la única representación de enteros que utiliza la arquitectura: la resta, el corrimiento aritmético derecho, el offset de sye y la pseudoinstrucción not rg, rf1 (que se expande a xori rg, rf1, -1 y sólo produce 0xFFFFFFFF si el inmediato se extiende con signo) ya la asumen. Una convención única evita duplicar cada comparación en dos variantes y ahorra códigos de ID.
+
+b) La memoria del sistema es de 64 KB, de modo que toda dirección válida está en el rango 0x00000000–0x0000FFFF y resulta positiva al interpretarse con signo. Comparar punteros, índices y contadores de lazo con las instrucciones con signo entrega el resultado correcto en todos los casos que la arquitectura puede presentar, por lo que no se requieren variantes sin signo.
+
+c) La decisión no cierra la puerta a una extensión futura: los tipos control y registro conservan códigos de ID libres, de manera que agregar variantes sin signo (por ejemplo menorau y mayoroigualu) no obligaría a cambiar el formato de los slots ni el ancho de ningún campo. Cualquier adición de ese tipo posterior a la Entrega 1 se comunicaría formalmente al grupo del compilador.
 
 ## Instrucciones tipo almacenar
 
@@ -368,6 +386,8 @@ Por lo tanto, el salto puede ser:
 ### Justificación de diseño
 
 Tanto el campo de tipo de operación como el ID de esta se mantienen en el mismo lugar y con la misma cantidad de bits para que haya coherencia en toda la encodificación de la arquitectura. Los 5 bits de rg permiten acceder a los 17 posibles registros de uso general. El offset de 16 bits permite que el salto que se pueda dar sea lo más extenso posible.
+
+La estrategia frente a saltos que aplica a sye es la misma que rige para los saltos condicionales: vaciado de pipeline sin delay slots, con una penalización de 2 ciclos cuando el salto se toma. Se define y se justifica en la sección Instrucciones tipo control, apartado [Estrategia frente a saltos](#estrategia-frente-a-saltos).
 
 ## Instrucciones tipo cripto
 
@@ -673,8 +693,8 @@ La distribución de los campos es la siguiente:
 |:---:|:---:|:---|:---|
 | 1000001 | 0001 | `igualsi` | if (rf1 == rf2) PC += inmediato |
 | 1000001 | 0010 | `igualno` | if (rf1 != rf2) PC += inmediato |
-| 1000001 | 0100 | `menora` | if (rf1 < rf2) PC += inmediato |
-| 1000001 | 1000 | `mayoroigual` | if (rf1 >= rf2) PC += inmediato |
+| 1000001 | 0100 | `menora` | if (rf1 < rf2) PC += inmediato (con signo) |
+| 1000001 | 1000 | `mayoroigual` | if (rf1 >= rf2) PC += inmediato (con signo) |
 
 ### Justificación
 
@@ -685,6 +705,30 @@ Para las instrucciones de salto condicional se utilizan dos registros fuente de 
 Los 11 bits restantes se destinan al inmediato utilizado como `offset` del salto. Este valor se interpreta como un desplazamiento respecto al valor actual del Program Counter (PC), permitiendo modificar el flujo de ejecución sin necesidad de almacenar una dirección absoluta dentro de la instrucción.
 
 Se definieron cuatro operaciones de salto condicional: `igualsi`, `igualno`, `menora` y `mayoroigual`. Estas permiten cubrir las comparaciones fundamentales entre dos registros y proporcionan las operaciones necesarias para implementar estructuras de decisión y repetición en programas de propósito general.
+
+### Estrategia frente a saltos
+
+**Política adoptada: vaciado de pipeline (flush) sin ranuras de retardo (delay slots).**
+
+Toda instrucción de salto de la arquitectura — los saltos condicionales igualsi, igualno, menora y mayoroigual, y el salto incondicional sye del tipo salto — se evalúa en la etapa EX del pipeline, que es donde la unidad BRU calcula la condición y la dirección destino. Cuando el salto se toma, los bundles que ya ingresaron al pipeline detrás de él, es decir los que en ese ciclo ocupan las etapas IF e ID (2 bundles en la organización de cuatro etapas presentada en la sección [Diagrama de organización de la arquitectura](#diagrama-de-organización-de-la-arquitectura)), se anulan: no escriben el banco de registros, ni la memoria, ni la bóveda de llaves, ni el registro ESTADO. El siguiente bundle que se ejecuta es el de la dirección destino.
+
+La arquitectura no define delay slots: el bundle inmediatamente posterior a un salto tomado nunca se ejecuta. Quien genera el código, sea el ensamblador propio o el compilador del grupo de contraparte, no debe rellenar ninguna ranura de retardo después de un salto ni insertar NOPs por causa de él.
+
+Penalización. Un salto tomado cuesta 2 ciclos de vaciado; un salto no tomado no tiene penalización alguna y la ejecución continúa con el bundle siguiente. La penalización queda declarada explícitamente en este documento, por lo que no constituye una penalización oculta.
+
+Efecto sobre el estado del procesador. Un bundle anulado no produce ningún efecto colateral: si contenía una operación criptográfica, ésta no consume subllaves de la bóveda, ni altera el estado de autenticación, ni genera la [excepción de privilegio](#política-de-autenticación-y-control-de-acceso); si contenía un acceso a memoria, la lectura o escritura no se realiza.
+
+#### Justificación de la elección
+
+1. Independencia del ISA respecto de la microarquitectura. La cantidad de delay slots depende del número de etapas y de en cuál de ellas se resuelve el salto. Fijarlos desde ahora ataría el contrato del ISA a un detalle de organización que aún no ha sido diseñada. Con vaciado, si la organización cambia — por ejemplo al separar el acceso a memoria en una etapa adicional — el ISA congelado sigue siendo válido y lo único que varía es el número de ciclos de penalización. Con delay slots, ese mismo cambio invalidaría todo el código ya generado.
+
+2. Contrato más simple con el grupo del compilador. El compilador ya asume toda la calendarización estática de los cuatro slots y el manejo de las dependencias de datos, porque el hardware no las resuelve. Obligarlo además a llenar ranuras de retardo aumentaría la complejidad del generador de código sin un beneficio proporcional.
+
+3. Un delay slot es especialmente caro en una arquitectura VLIW. La ranura de retardo no sería una instrucción sino un bundle completo de 128 bits con sus cuatro slots. Encontrar trabajo útil e independiente para los cuatro slots después de cada salto es poco probable, de modo que en la práctica se rellenarían con NOPs: se gastarían 16 bytes de memoria de instrucciones por salto para lograr el mismo efecto que el vaciado consigue sin ocupar memoria.
+
+4. El costo es asumible para la aplicación objetivo. Los lazos de cifrado tienen cuerpos de decenas de bundles, ya que cada bloque requiere cuatro rondas Feistel4 más las cargas y los almacenamientos correspondientes, por lo que 2 ciclos por iteración son despreciables frente al total.
+
+5. Es compatible con la calendarización estática que exige el enunciado. El enunciado prohíbe que el hardware detecte y resuelva riesgos de datos de forma dinámica, pero el vaciado atiende un riesgo de control, no de datos: es una señal local de la unidad BRU que invalida los bundles en vuelo y no requiere forwarding, scoreboarding ni detección de dependencias entre instrucciones.
 
 ### Explicación de las instrucciones
 
@@ -755,12 +799,12 @@ igualno   rf1=5, rf2=6, inmediato=6
 
 #### Instrucción menora:
 
-Descripción: Compara los valores contenidos en rf1 y rf2. Si el valor de rf1 es menor que el valor de rf2, el Program Counter (PC) se modifica sumándole el inmediato. En caso contrario, el salto no se realiza.
+Descripción: Compara los valores contenidos en rf1 y rf2. Si el valor de rf1 es menor que el valor de rf2 (comparación con signo, en complemento a dos), el Program Counter (PC) se modifica sumándole el inmediato. En caso contrario, el salto no se realiza.
 
 **Operación:**
 
 ```
-if (rf1 < rf2) PC += inmediato
+if (rf1 < rf2) PC += inmediato — comparación con signo
 ```
 
 **Ejemplo en ensamblador:**
@@ -775,16 +819,16 @@ menora    rf1=7, rf2=8, inmediato=3
 - rf1 y rf2 pueden identificar cualquiera de los 32 registros (x0–x31).
 - El inmediato debe codificarse utilizando los 11 bits disponibles del campo [10:0].
 - La instrucción no escribe un registro de propósito general; únicamente puede modificar el flujo de ejecución.
-- La versión actual del documento no especifica si la comparación se interpreta con signo o sin signo; esta convención debe fijarse en la especificación final.
+- La comparación se interpreta con signo, en complemento a dos, según la [convención de comparaciones y de signo](#convención-de-comparaciones-y-de-signo-aplica-a-todo-el-isa) definida para todo el ISA en la sección Justificación General.
 
 #### Instrucción `mayoroigual`
 
-Descripción: Compara los valores contenidos en `rf1` y `rf2`. Si el valor de `rf1` es mayor o igual que el valor de rf2, el Program Counter (PC) se modifica sumándole el inmediato. Si la condición es falsa, el salto no se realiza.
+Descripción: Compara los valores contenidos en `rf1` y `rf2`. Si el valor de `rf1` es mayor o igual que el valor de rf2 (comparación con signo, en complemento a dos), el Program Counter (PC) se modifica sumándole el inmediato. Si la condición es falsa, el salto no se realiza.
 
 Operación:
 
 ```
-if (rf1 >= rf2) PC += inmediato
+if (rf1 >= rf2) PC += inmediato — comparación con signo
 ```
 
 Ejemplo en ensamblador:
@@ -799,7 +843,7 @@ Restricciones:
 - `rf1` y `rf2` pueden identificar cualquiera de los 32 registros (`x0–x31`).
 - El inmediato debe codificarse utilizando los 11 bits disponibles del campo [10:0].
 - La instrucción no escribe un registro de propósito general; únicamente puede modificar el flujo de ejecución.
-- La versión actual del documento no especifica si la comparación se interpreta con signo o sin signo; esta convención debe fijarse en la especificación final.
+- La comparación se interpreta con signo, en complemento a dos, según la [convención de comparaciones y de signo](#convención-de-comparaciones-y-de-signo-aplica-a-todo-el-isa) definida para todo el ISA en la sección Justificación General.
 
 ## Instrucciones tipo Registro
 
@@ -826,8 +870,8 @@ La distribución de los campos es la siguiente:
 | 1101010<br>1101010 | 1110 | `xor` | rg = rf1 XOR rf2 |
 | 1101010 | 1100 | `and` | rg = rf1&rf2 |
 | 1101010 | 1101 | `or` | rg = rf1\|rf2 |
-| 1101010 | 0101 | `mrq` | rg = rf1<rf2 |
-| 1101010 | 0110 | `myq` | rg = rf1>rf2 |
+| 1101010 | 0101 | `mrq` | rg = rf1<rf2 (con signo) |
+| 1101010 | 0110 | `myq` | rg = rf1>rf2 (con signo) |
 
 ### Explicación de las instrucciones
 
@@ -902,7 +946,7 @@ rg  = 1110
 rg = 14
 ```
 
-`mrq`: Compara los valores de `rf1` y `rf2` y determina si `rf1` es menor que `rf2`.
+`mrq`: Compara los valores de `rf1` y `rf2` y determina si `rf1` es menor que `rf2`. Ambos operandos se interpretan como enteros con signo, en complemento a dos.
 
 ```
 rg = (rf1 < rf2)
@@ -918,7 +962,7 @@ rg = (5 < 10) = 1
 Si la condición no se cumple, rg = 0
 ```
 
-`myq`: Compara los valores de `rf1` y `rf2` y determina si `rf1` es mayor que `rf2`.
+`myq`: Compara los valores de `rf1` y `rf2` y determina si `rf1` es mayor que `rf2`. Ambos operandos se interpretan como enteros con signo, en complemento a dos.
 
 ```
 rg = (rf1 > rf2)
