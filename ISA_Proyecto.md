@@ -71,6 +71,8 @@ Fabricio Mena Mejia – 2019042722
   - [Registros de propósito general](#registros-de-propósito-general)
   - [Resumen de la arquitectura](#resumen-de-la-arquitectura)
   - [Diagrama de organización de la arquitectura](#diagrama-de-organización-de-la-arquitectura)
+    - [Formato del bundle VLIW](#formato-del-bundle-vliw)
+    - [Formato general de un slot de 32 bits](#formato-general-de-un-slot-de-32-bits)
   - [Green card del ISA](#green-card-de-la-isa-del-proyecto-vliw)
 
 ---
@@ -393,37 +395,37 @@ La estrategia frente a saltos que aplica a sye es la misma que rige para los sal
 
 ### Política de autenticación y control de acceso
 
-El procesador mantiene un **registro de estado `ESTADO`** de 32 bits. De ellos, sólo el bit menos significativo (`ESTADO[0]`, en adelante "bit AUTH") define si el procesador se encuentra autenticado frente a la bóveda de llaves:
+El procesador mantiene un **registro de estado `ESTADO`** de 32 bits. Para el control de acceso a la unidad criptográfica se utilizan dos bits: `AUTH`, que indica si el procesador se encuentra autenticado frente a la bóveda, e `INIT`, que habilita exclusivamente el provisionamiento inicial de la contraseña maestra.
 
 | Bit | Nombre | Significado |
 |:---|:---|:---|
 | `ESTADO[0]` | AUTH | `1` = autenticado, `0` = no autenticado. |
-| `ESTADO[31:1]` | — | Reservados (siempre `0`). |
+| `ESTADO[1]` | INIT | `1` = provisionamiento inicial habilitado, `0` = `setpwd` bloqueada. |
+| `ESTADO[31:2]` | — | Reservados (siempre `0`). |
 
-El bit AUTH **no es accesible** mediante instrucciones de carga/almacenamiento a memoria ni mediante lectura a registros de propósito general; sólo puede ser alterado por las instrucciones privilegiadas de la unidad criptográfica que se describen más adelante. Esto refuerza el aislamiento de la bóveda (Sección 4.4.1).
+Los bits `AUTH` e `INIT` **no son accesibles** mediante instrucciones de carga/almacenamiento a memoria ni mediante lectura o escritura desde registros de propósito general. `AUTH` sólo puede ser actualizado por las instrucciones privilegiadas de autenticación definidas por la unidad criptográfica. `INIT` es controlado por el mecanismo de arranque/provisionamiento y se limpia después de una ejecución válida de `setpwd`.
 
 #### Restricción de uso por instrucción
 
-| Instrucción | ¿Requiere `AUTH = 1`? | Si falta AUTH |
-|:---|:---:|:---|
-| `vcr` | No (es la vía de autenticación) | n/a |
-| `setpwd` | **Requiere `AUTH = 0`** (sólo en arranque, antes de autenticar) | Excepción |
-| `ell` | Sí | Excepción (sin escribir en bóveda) |
-| `camcom` | Sí | Excepción (sin rotar la contraseña) |
-| `fsl`, `fsli` | Sí | Excepción (sin consumir subllave) |
+| Instrucción | Condición de acceso | Si no se cumple |
+|:---|:---|:---|
+| `vcr` | No requiere `AUTH = 1`; es la vía de autenticación. | n/a |
+| `setpwd` | **Requiere `INIT = 1`**. `AUTH = 0` por sí solo no la autoriza. | Excepción de privilegio |
+| `ell` | Requiere `AUTH = 1`. | Excepción (sin escribir en bóveda) |
+| `camcom` | Requiere `AUTH = 1`. | Excepción (sin rotar la contraseña) |
+| `fsl`, `fsli` | Requieren `AUTH = 1`. | Excepción (sin consumir subllave) |
 
-Cualquier intento de ejecutar una instrucción que requiera autenticación sin tener `AUTH = 1` genera una **excepción de privilegio** (trap de seguridad). La excepción detiene la ejecución del bundle actual y transfiere el control a una dirección de manejo a definir en la microarquitectura.
+Cualquier intento de ejecutar una instrucción privilegiada sin cumplir su condición de acceso genera una **excepción de privilegio** (trap de seguridad). La excepción detiene la ejecución del bundle actual y transfiere el control a una dirección de manejo a definir en la microarquitectura.
 
 #### Flujo de autenticación típico
 
-1. **Arranque:** el procesador parte con `AUTH = 0`. El código de boot puede invocar `setpwd` una sola vez para cargar la contraseña maestra en la bóveda desde un registro (típicamente `x16`).
-2. **Validación:** `vcr` compara la contraseña candidata en memoria contra la real de la bóveda. Si coinciden, pone `AUTH = 1`; si no, mantiene `AUTH = 0`. El resultado se actualiza únicamente en `ESTADO[0]`, **no** se escribe a memoria ni a registros.
-3. **Uso:** una vez autenticado, el programa puede invocar `ell`, `camcom`, `fsl` y `fsli`. Cualquier intento de bypass produce excepción.
-4. **Bloqueo:** si se desea revocar el acceso, basta con sobrescribir manualmente el bit `AUTH = 0` mediante una futura instrucción de logout (a definir en extensión).
+1. **Provisionamiento inicial:** durante el arranque destinado al provisionamiento, el procesador parte con `AUTH = 0` e `INIT = 1`. El código de boot puede ejecutar `setpwd` para depositar la contraseña maestra en la bóveda desde un registro de propósito general.
+2. **Cierre del provisionamiento:** después de una ejecución válida de `setpwd`, `INIT` se limpia a `0`. A partir de ese momento, `setpwd` queda bloqueada aunque `AUTH = 0`.
+3. **Validación:** `vcr` compara la contraseña candidata almacenada en memoria contra la contraseña real residente en la bóveda. Si coinciden, pone `AUTH = 1`; si no, mantiene `AUTH = 0`. El resultado se actualiza únicamente en `ESTADO[0]`, **no** se escribe a memoria ni a registros.
+4. **Uso:** una vez autenticado, el programa puede invocar `ell`, `camcom`, `fsl` y `fsli`. Cualquier intento de bypass produce excepción.
+5. **Bloqueo:** si se desea revocar el acceso, una futura instrucción privilegiada de logout podrá limpiar `AUTH` sin volver a habilitar `INIT`.
 
-Esta política garantiza que las subllaves nunca abandonen la bóveda por buses de propósito general y que sólo código autenticado puede consumirlas.
-
-
+Esta política separa el estado de **autenticación** del estado de **provisionamiento**: estar no autenticado no implica tener permiso para cambiar la contraseña maestra. Además, la contraseña real permanece dentro de la bóveda y no necesita exponerse a registros de propósito general después de su inicialización.
 
 | [31:25] | [24:21] | [20:19] | [18:17] | [16:12] | [11:7] | [6:0] |
 |:---:|:---:|:---:|:---:|:---:|:---:|:---:|
@@ -447,7 +449,7 @@ La distribución de los campos es la siguiente:
 | 0000010 | 0010 | `ell` | bóveda[LK][off..off+1] = (rs1, rs2) |
 | 0000010 | 0011 | `vcr` | actualiza ESTADO con (mem[dir_cand] == mem[dir_real]) |
 | 0000010 | 0100 | `camcom` | mem[dir] = ROL(mem[dir], imm) |
-| 0000010 | 0101 | `setpwd` | dir_contraseña_real = rf (solo en arranque, sin autenticar) |
+| 0000010 | 0101 | `setpwd` | contraseña_bóveda = R[rs] (sólo con `INIT = 1`) |
 | 0000010 | 0110–1111 | — | reservados |
 
 ### Justificación
@@ -462,7 +464,10 @@ Para `fsl` y `fsli` se eligió ejecutar una ronda por instrucción, no las cuatr
 
 `camcom`, el cambio de contraseña recibe un inmediato de n bits con la cantidad de corrimientos a aplicar sobre la contraseña actual. Codificarlo como inmediato es práctico para una rotación lógica circular.
 
+`setpwd` se reserva para el provisionamiento inicial y utiliza el bit `INIT` de `ESTADO` como condición de acceso. De esta manera, `AUTH = 0` no basta para reconfigurar la contraseña: una ejecución válida de `setpwd` limpia `INIT` y bloquea nuevos intentos fuera de la fase de inicialización.
+
 **Nota de aislamiento:** las subllaves únicamente salen de la bóveda de manera implícita al ejecutarse `fsl`/`fsli`; no existen instrucciones que copien contenido de la bóveda a registros de propósito general ni a memoria. 
+
 ### Explicación de las instrucciones
 
 #### `fsl`
@@ -641,13 +646,13 @@ Restricciones:
 
 #### `setpwd`
 
-Descripción: Inicializa la contraseña en la bóveda desde un registro fuente al arrancar el sistema. Es la única vía para depositar la contraseña maestra.
+Descripción: Inicializa la contraseña maestra del sistema durante el proceso privilegiado de provisionamiento. La contraseña se toma del registro fuente indicado por `rs` y se deposita directamente en el almacenamiento protegido de la unidad criptográfica. `setpwd` no se autoriza simplemente porque el procesador se encuentre sin autenticar; su ejecución depende exclusivamente del bit `INIT`.
 
 Formato:
 
 | 31:25 | 24:21 | 20:5 | 4:0 |
 |:---:|:---:|:---:|:---:|
-| **Tipo** | **ID** | **dir** | **rs** |
+| **Tipo** | **ID** | **RSV** | **rs** |
 | 7 bits | 4 bits | 16 bits | 5 bits |
 
 Descripción de campos:
@@ -655,22 +660,25 @@ Descripción de campos:
 | Campo | Bits | Significado |
 |:---|:---|:---|
 | Tipo | [31:25] | 0000010 |
-| ID | [24:21] | 0111 — opcode de SETPWD |
-| dir | [20:5] | Dirección de memoria destino (0–65535) |
-| rf | [4:0] | Registro fuente con la contraseña inicial (32 bits) |
+| ID | [24:21] | 0101 — opcode de SETPWD |
+| RSV | [20:5] | 0000000000000000 — reservados |
+| rs | [4:0] | Registro fuente con la contraseña inicial (32 bits) |
 
 Ejemplo en ensamblador:
 
-```
-# Inicializar contraseña: x5 → mem[0x0010]
-setpwd   rs=5, dir=0x0010
-movi     x16, 0x0010
+```asm
+# Inicializar la contraseña durante el provisionamiento
+setpwd   rs=5
+# Resultado conceptual: contraseña_bóveda <- x5
 ```
 
 Restricciones:
 
-- Sólo se permite cuando `ESTADO[0] = AUTH = 0` (camino de inicialización en arranque). Si el procesador ya está autenticado genera **excepción de privilegio**.
-- El campo `rf` se ignora a nivel arquitectónico; el valor se toma del registro `x16` por convención para reforzar el aislamiento.
+- Sólo se permite cuando `ESTADO[1] = INIT = 1`. Si `INIT = 0`, `setpwd` genera **excepción de privilegio**.
+- `AUTH = 0` por sí solo **no** autoriza la ejecución de `setpwd`.
+- `rs` puede ser cualquier registro de propósito general válido que contenga la contraseña inicial.
+- Después de una ejecución válida, `INIT` se limpia automáticamente a `0`.
+- La contraseña queda almacenada en la bóveda y no puede leerse posteriormente mediante instrucciones de memoria ni copiarse a registros de propósito general.
 
 ## Instrucciones tipo control
 
@@ -1020,7 +1028,7 @@ Las resuelve el ensamblador
 | NOP | 0x00000000 en cualquier slot | El `TIPO = 0000000` no se usa por ninguna FU activa (ALU=1000000/1101010, LSU=1001001, BRU=1000001/1001011, Cripto=0000010), por lo que el decodificador lo reconoce como NOP en cualquier slot sin invocar ninguna unidad funcional. |
 | Registros | 32 × 32 bits (x0–x31), x0 = 0 | Campos de 5 bits; x0 constante. |
 | PC | 32 bits, alineado a 16 bytes | Direccionamiento por byte, bundle alineado. |
-| Registro de estado | ESTADO (32 bits) | Autenticación. |
+| Registro de estado | ESTADO (32 bits): `AUTH` e `INIT` | `AUTH` controla la autenticación; `INIT` habilita únicamente el provisionamiento inicial mediante `setpwd`. |
 | Memoria | 64 KB mínimo, byte-direccionable, little-endian, direcciones de 32 bits | Requisito del enunciado. |
 | Bóveda de llaves | 4 llaves × 128 bits (4 subllaves de 32 bits) + contraseña de 32 bits | Sólo accesible por la unidad criptográfica. |
 | Calendarización | Estática. Sin forwarding, sin stalls. | Requisito del enunciado. |
@@ -1028,6 +1036,56 @@ Las resuelve el ensamblador
 ## Diagrama de organización de la arquitectura
 
 ![Diagrama de organización de la arquitectura](img/diagrama_organizacion.png)
+
+### Formato del bundle VLIW
+
+La arquitectura utiliza bundles VLIW de **128 bits** compuestos por cuatro slots fijos de **32 bits**. Cada slot está asociado permanentemente a una unidad funcional, por lo que el despacho no requiere un campo adicional de selección. La asignación definida es: **Slot 0 = ALU, Slot 1 = LSU, Slot 2 = BRU y Slot 3 = CRIPTO**.
+
+La organización conceptual del bundle se representa directamente mediante la siguiente tabla:
+
+| Slot 0 `[31:0]` | Slot 1 `[63:32]` | Slot 2 `[95:64]` | Slot 3 `[127:96]` |
+|:---:|:---:|:---:|:---:|
+| **ALU** | **LSU** | **BRU** | **CRIPTO** |
+| 32 bits | 32 bits | 32 bits | 32 bits |
+
+**Ancho total del bundle: 128 bits (16 bytes).**
+
+El esquema de slots fijos simplifica el despacho, ya que la unidad funcional destino queda determinada por la posición del slot dentro del bundle. La calendarización continúa siendo estática: el software que genera el código debe ubicar cada operación en el slot correspondiente y utilizar `NOP` cuando una unidad funcional no tenga trabajo en un bundle determinado.
+
+### Formato general de un slot de 32 bits
+
+Cada slot conserva el prefijo común de la ISA. Los bits `[31:25]` corresponden al tipo de operación y los bits `[24:21]` al identificador de la operación. Los **21 bits restantes** se utilizan para los campos de operandos, cuya distribución depende del formato particular de la instrucción ejecutada por la unidad funcional correspondiente.
+
+| `[31:25]` | `[24:21]` | `[20:0]` |
+|:---:|:---:|:---:|
+| **Tipo de operación** | **ID operación** | **Campos de operandos** |
+| 7 bits | 4 bits | 21 bits |
+
+
+### Formato del bundle VLIW
+
+La arquitectura utiliza bundles VLIW de **128 bits** compuestos por cuatro slots fijos de **32 bits**. Cada slot está asociado permanentemente a una unidad funcional, por lo que el despacho no requiere un campo adicional de selección. La asignación definida es: **Slot 0 = ALU, Slot 1 = LSU, Slot 2 = BRU y Slot 3 = CRIPTO**.
+
+La organización conceptual del bundle se representa directamente mediante la siguiente tabla:
+
+| Slot 0 `[31:0]` | Slot 1 `[63:32]` | Slot 2 `[95:64]` | Slot 3 `[127:96]` |
+|:---:|:---:|:---:|:---:|
+| **ALU** | **LSU** | **BRU** | **CRIPTO** |
+| 32 bits | 32 bits | 32 bits | 32 bits |
+
+**Ancho total del bundle: 128 bits (16 bytes).**
+
+El esquema de slots fijos simplifica el despacho, ya que la unidad funcional destino queda determinada por la posición del slot dentro del bundle. La calendarización continúa siendo estática: el software que genera el código debe ubicar cada operación en el slot correspondiente y utilizar `NOP` cuando una unidad funcional no tenga trabajo en un bundle determinado.
+
+### Formato general de un slot de 32 bits
+
+Cada slot conserva el prefijo común de la ISA. Los bits `[31:25]` corresponden al tipo de operación y los bits `[24:21]` al identificador de la operación. Los **21 bits restantes** se utilizan para los campos de operandos, cuya distribución depende del formato particular de la instrucción ejecutada por la unidad funcional correspondiente.
+
+| `[31:25]` | `[24:21]` | `[20:0]` |
+|:---:|:---:|:---:|
+| **Tipo de operación** | **ID operación** | **Campos de operandos** |
+| 7 bits | 4 bits | 21 bits |
+
 
 ## Green card de la ISA del proyecto VLIW 
 
