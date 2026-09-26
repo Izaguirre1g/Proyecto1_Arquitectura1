@@ -1072,6 +1072,8 @@ Todas las instrucciones miden 32 bits: **Tipo de operación** [31:25] (7 bits) +
 |---|---|---|
 | `guardap` | Guardar palabra | `M(rf1+offset) = rf2[31:0]`. Ej.: `guardap x3, x8, 5` → si x3 = 0x20, guarda x8 en 0x25. |
 | `guardab` | Guardar byte | `M(rf1+offset) = rf2[7:0]`. Igual que `guardap` pero solo guarda el byte menos significativo. |
+| `cargai` | Cargar palabra | `rg = M[rf1 + inm]`. Ej.: rf1 = 1000, inm = 20 → rg = M[1020]. |
+| `cargabai` | Cargar byte | `rg = M8[rf1 + inm]`. Ej.: rf1 = 2000, inm = 4, M[2004] = 0x7F → rg = 0x7F. |
 
 ## Instrucciones tipo inmediato
 
@@ -1085,8 +1087,7 @@ Todas las instrucciones miden 32 bits: **Tipo de operación** [31:25] (7 bits) +
 | `xori` | XOR con inmediato | `rg = rf1 XOR inm`. Ej.: `1010 XOR 1100 = 0110`. |
 | `andi` | AND con inmediato | `rg = rf1 AND inm`. Ej.: `1010 AND 1100 = 1000`. |
 | `ori` | OR con inmediato | `rg = rf1 OR inm`. Ej.: `1010 OR 1100 = 1110`. |
-| `cargai` | Cargar palabra | `rg = M[rf1 + inm]`. Ej.: rf1 = 1000, inm = 20 → rg = M[1020]. |
-| `cargabai` | Cargar byte | `rg = M8[rf1 + inm]`. Ej.: rf1 = 2000, inm = 4, M[2004] = 0x7F → rg = 0x7F. |
+
 
 ## Instrucciones tipo salto
 
