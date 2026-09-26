@@ -1062,31 +1062,6 @@ Cada slot conserva el prefijo común de la ISA. Los bits `[31:25]` corresponden 
 | 7 bits | 4 bits | 21 bits |
 
 
-### Formato del bundle VLIW
-
-La arquitectura utiliza bundles VLIW de **128 bits** compuestos por cuatro slots fijos de **32 bits**. Cada slot está asociado permanentemente a una unidad funcional, por lo que el despacho no requiere un campo adicional de selección. La asignación definida es: **Slot 0 = ALU, Slot 1 = LSU, Slot 2 = BRU y Slot 3 = CRIPTO**.
-
-La organización conceptual del bundle se representa directamente mediante la siguiente tabla:
-
-| Slot 0 `[31:0]` | Slot 1 `[63:32]` | Slot 2 `[95:64]` | Slot 3 `[127:96]` |
-|:---:|:---:|:---:|:---:|
-| **ALU** | **LSU** | **BRU** | **CRIPTO** |
-| 32 bits | 32 bits | 32 bits | 32 bits |
-
-**Ancho total del bundle: 128 bits (16 bytes).**
-
-El esquema de slots fijos simplifica el despacho, ya que la unidad funcional destino queda determinada por la posición del slot dentro del bundle. La calendarización continúa siendo estática: el software que genera el código debe ubicar cada operación en el slot correspondiente y utilizar `NOP` cuando una unidad funcional no tenga trabajo en un bundle determinado.
-
-### Formato general de un slot de 32 bits
-
-Cada slot conserva el prefijo común de la ISA. Los bits `[31:25]` corresponden al tipo de operación y los bits `[24:21]` al identificador de la operación. Los **21 bits restantes** se utilizan para los campos de operandos, cuya distribución depende del formato particular de la instrucción ejecutada por la unidad funcional correspondiente.
-
-| `[31:25]` | `[24:21]` | `[20:0]` |
-|:---:|:---:|:---:|
-| **Tipo de operación** | **ID operación** | **Campos de operandos** |
-| 7 bits | 4 bits | 21 bits |
-
-
 ## Green card de la ISA del proyecto VLIW 
 
 Todas las instrucciones miden 32 bits: **Tipo de operación** [31:25] (7 bits) + **ID de operación** [24:21] (4 bits) + operandos (21 bits, según el tipo). Los campos de registro usan 5 bits (x0–x31).
