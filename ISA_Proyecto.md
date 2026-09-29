@@ -1081,7 +1081,7 @@ Todas las instrucciones miden 32 bits: **Tipo de operación** [31:25] (7 bits) +
 |---|---|---|
 | `sumai` | Suma con inmediato | `rg = rf1 + inm`. Ej.: rf1 = 10, inm = 5 → rg = 15. |
 | `restai` | Resta con inmediato | `rg = rf1 - inm`. Ej.: rf1 = 10, inm = 3 → rg = 7. |
-| `cizqi` | Corrimiento izquierdo inmediato | `rg = rf1 << inm`. Ej.: `00000101 << 2 = 00010100` (20). |
+| `i` | Corrimiento izquierdo inmediato | `rg = rf1 << inm`. Ej.: `00000101 << 2 = 00010100` (20). |
 | `cderi` | Corrimiento derecho lógico inmediato | `rg = rf1 >> inm`, rellena con ceros. Ej.: `00010100 >> 2 = 00000101` (5). |
 | `caderi` | Corrimiento aritmético derecho inmediato | `rg = rf1 >>> inm`, conserva el signo. Ej.: `11110000 >>> 2 = 11111100`. |
 | `xori` | XOR con inmediato | `rg = rf1 XOR inm`. Ej.: `1010 XOR 1100 = 0110`. |
@@ -1110,7 +1110,7 @@ Todas las instrucciones miden 32 bits: **Tipo de operación** [31:25] (7 bits) +
 |---|---|---|
 | `suma` | Suma | `rg = rf1 + rf2`. |
 | `resta` | Resta | `rg = rf1 - rf2`. |
-| `cizq` | Corrimiento izquierdo | `rg = rf1 << rf2`. Ej.: rf1 = 5, rf2 = 2 → rg = 20. |
+| `` | Corrimiento izquierdo | `rg = rf1 << rf2`. Ej.: rf1 = 5, rf2 = 2 → rg = 20. |
 | `cder` | Corrimiento derecho lógico | `rg = rf1 >> rf2`, rellena con ceros. Ej.: rf1 = 20, rf2 = 2 → rg = 5. |
 | `cader` | Corrimiento aritmético derecho | `rg = rf1 >>> rf2`, conserva el signo. Ej.: rf1 = −8, rf2 = 2 → rg = −2. |
 | `xor` | XOR | `rg = rf1 XOR rf2`. Ej.: `1010 XOR 1100 = 0110`. |
@@ -1148,7 +1148,7 @@ Todas las instrucciones miden 32 bits: **Tipo de operación** [31:25] (7 bits) +
 | Inmediato | `1000000` | Tipo \| ID \| rf1 [20:16] \| rg [15:11] \| inm [10:0] | sumai 0000, restai 0001, cizqi 0010, cderi 0011, caderi 0100, xori 0101, andi 0110, ori 0111, cargai 1000, cargabai 1001 |
 | Salto | `1001011` | Tipo \| ID \| rg [20:16] \| offset [15:0] | sye 0000 |
 | Control | `1000001` | Tipo \| ID \| rf1 [20:16] \| rf2 [15:11] \| inm [10:0] | igualsi 0001, igualno 0010, menora 0100, mayoroigual 1000 |
-| Registro | `1101010` | Tipo \| ID \| rg [20:16] \| rf1 [15:11] \| rf2 [10:6] | suma 1000, resta 1001, cizq 1011, cder 1111, cader 1010, xor 1110, and 1100, or 1101, mrq 1011, myq 0110 |
+| Registro | `1101010` | Tipo \| ID \| rg [20:16] \| rf1 [15:11] \| rf2 [10:6] | suma 1000, resta 1001, cizq 1011, cder 1111, cader 1010, xor 1110, and 1100, or 1101, mrq 0101, myq 0110 |
 | Cripto | `0000010` | Tipo \| ID \| LK [20:19] \| RK/off [18:17] \| rd [16:12] \| r1 [11:7] \| RSV [6:0] | fsl 0000, fsli 0001, ell 0010, vcr 0011, camcon 0100, csi 0101, csd 0110, setpwd 0111 |
 
 `vcr`, `camcon` y `setpwd` usan: Tipo \| ID \| dir [20:5] \| dir_flag / imm / rs [4:0].
