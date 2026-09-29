@@ -15,8 +15,8 @@
  valores numéricos repetidos.
 ================================================================================
 */
-
-
+`ifndef ISA_DEFS_SV
+`define ISA_DEFS_SV
 // ============================================================================
 // Tipos de instrucción [31:25]
 // ============================================================================
@@ -75,3 +75,5 @@ localparam logic [3:0] ALU_AND  = 4'd6;
 localparam logic [3:0] ALU_OR   = 4'd7;
 localparam logic [3:0] ALU_LT   = 4'd8;
 localparam logic [3:0] ALU_GT   = 4'd9;
+
+`endif
