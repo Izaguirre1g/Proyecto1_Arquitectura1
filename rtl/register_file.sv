@@ -57,6 +57,11 @@ module register_file(
 logic [31:0] registers [0:31];
 integer i;
 
+initial begin
+    registers[2] = 32'd20;
+    registers[3] = 32'd30;
+end
+
 // Escritura de registros
 
 always @(posedge clk) begin
