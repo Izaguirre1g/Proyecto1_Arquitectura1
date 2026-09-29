@@ -14,7 +14,7 @@ Descripción:
  ------------------------------------------------------------------------------
  - Operación de la ALU.
  - Registro destino.
- - Registros fuente.
+ - Operandos provenientes del banco de registros.
  - Valor inmediato.
  - Señal indicando uso de inmediato.
  - Señal de validez.
@@ -37,8 +37,8 @@ module pipeline_id_ex(
     input logic [3:0] alu_op,
 
     input logic [4:0] rd,
-    input logic [4:0] rs1,
-    input logic [4:0] rs2,
+    input logic [31:0] operand_a,
+    input logic [31:0] operand_b,
 
     input logic [10:0] imm,
 
@@ -49,8 +49,8 @@ module pipeline_id_ex(
     output logic [3:0] alu_op_out,
 
     output logic [4:0] rd_out,
-    output logic [4:0] rs1_out,
-    output logic [4:0] rs2_out,
+    output logic [31:0] operand_a_out,
+    output logic [31:0] operand_b_out,
 
     output logic [10:0] imm_out,
 
@@ -67,8 +67,8 @@ always @(posedge clk) begin
         alu_op_out <= 4'b0;
 
         rd_out <= 5'b0;
-        rs1_out <= 5'b0;
-        rs2_out <= 5'b0;
+        operand_a_out <= 32'b0;
+        operand_b_out <= 32'b0;
 
         imm_out <= 11'b0;
 
@@ -82,8 +82,8 @@ always @(posedge clk) begin
         alu_op_out <= alu_op;
 
         rd_out <= rd;
-        rs1_out <= rs1;
-        rs2_out <= rs2;
+        operand_a_out <= operand_a;
+        operand_b_out <= operand_b;
 
         imm_out <= imm;
 
