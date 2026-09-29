@@ -18,6 +18,7 @@ module fetch(
 
 );
 //Cuando llega un flanco de reloj positivo del reloj se actualizan esos registros, se utiliza lógica secuencial:
+//Ejecuta este bloque solo cuando ocurre un flanco de subida del reloj y es lógica secuencial
 always @(posedge clk) begin
 		if (reset) begin
 			pc_out <= 32'b0;
