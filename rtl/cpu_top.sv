@@ -128,17 +128,44 @@ pipeline_if_id IF_ID (
 
 
 // =====================================
-// Por ahora usamos slot 0
+// DISPATCH VLIW
 // =====================================
 
 
+logic [31:0] slot0_instr;
+
+logic [31:0] slot1_instr;
+
+logic [31:0] slot2_instr;
+
+logic [31:0] slot3_instr;
+
+logic dispatch_valid;
+
+
+
+dispatch DISPATCH (
+
+    .bundle_in(id_bundle),
+
+    .valid_in(id_valid),
+
+
+    .slot0_instr(slot0_instr),
+
+    .slot1_instr(slot1_instr),
+
+    .slot2_instr(slot2_instr),
+
+    .slot3_instr(slot3_instr),
+
+
+    .valid_out(dispatch_valid)
+
+);
+
 logic [31:0] instruction;
-
-
-
-assign instruction = id_bundle[31:0];
-
-
+assign instruction = slot0_instr;
 
 // =====================================
 // ID
