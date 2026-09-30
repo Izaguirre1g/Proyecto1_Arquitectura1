@@ -53,4 +53,21 @@ always @(*) begin
         reg_write = 1'b0;
 
 end
+
+always @(*) begin
+
+    write_data = result_in;
+
+    rd_out = rd_in;
+
+
+    if(valid_in && rd_in != 5'b0)
+
+        reg_write = 1'b1;
+
+    else
+
+        reg_write = 1'b0;
+
+end
 endmodule

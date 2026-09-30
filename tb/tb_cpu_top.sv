@@ -77,7 +77,7 @@ initial begin
     $display("CPU INICIANDO");
 
 
-    #100;
+    #300;
 
     $finish;
 
