@@ -31,4 +31,11 @@ always @(posedge clk) begin
 			valid_out <= 1'b1;
 		end
 end
+always @(posedge clk) begin
+
+    if(!reset) begin
+        $display("FETCH bundle = %h", instruction_bundle);
+    end
+
+end
 endmodule

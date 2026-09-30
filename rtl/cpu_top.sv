@@ -29,17 +29,35 @@ module cpu_top(
     input logic reset,
 
 
-    // Memoria de instrucciones
+    output logic [31:0] debug_result,
 
-    input logic [127:0] instruction_bundle
+    output logic [4:0] debug_rd,
+
+    output logic debug_write
+
+    
+);
+
+logic [31:0] pc;
+logic [127:0] instruction_bundle;
+
+instruction_memory IMEM(
+
+    .address(pc),
+
+    .instruction_bundle(instruction_bundle)
 
 );
 
+program_counter PC_REG(
 
+    .clk(clk),
 
-logic [31:0] pc;
+    .reset(reset),
 
+    .pc_out(pc)
 
+);
 
 // =====================================
 // FETCH
@@ -318,8 +336,13 @@ wb WB (
 
     .reg_write(wb_enable)
 
-);
 
+);
+    assign debug_result = wb_data;
+
+    assign debug_rd = wb_rd;
+
+    assign debug_write = wb_enable;
 
 
 endmodule

@@ -102,4 +102,16 @@ register_file registers (
 
 assign operand_a = rs1_data;
 assign operand_b = use_imm ? {{21{imm[10]}},imm} : rs2_data; //Aquí se hace el selector del segundo operando.
+
+always @(*) begin
+
+    $display("ID instruction = %h rd=%d rs1=%d rs2=%d",
+        instruction,
+        rd,
+        rs1,
+        rs2
+    );
+
+end
+
 endmodule
