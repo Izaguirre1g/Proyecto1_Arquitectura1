@@ -348,23 +348,54 @@ pipeline_ex_wb EX_WB (
 // WB
 // =====================================
 
+// Por ahora sólo el slot 0 (ALU) produce resultados. Las entradas de LSU, BRU
+// y CRIPTO quedan en 0 hasta que se integren esas unidades.
+
+logic [4:0] wb_we;
+
+logic [4:0][4:0] wb_waddr;
+
+logic [4:0][31:0] wb_wdata;
+
+logic wb_conflict;
+
 
 wb WB (
 
-    .result_in(wb_result),
+    .alu_we(wb_valid),
+    .alu_rd(wb_rd_pipe),
+    .alu_data(wb_result),
 
-    .rd_in(wb_rd_pipe),
+    .lsu_we(1'b0),
+    .lsu_rd(5'd0),
+    .lsu_data(32'd0),
 
-    .valid_in(wb_valid),
+    .bru_we(1'b0),
+    .bru_rd(5'd0),
+    .bru_data(32'd0),
 
-    .write_data(wb_data),
+    .crypto_we(1'b0),
+    .crypto_rd(5'd0),
+    .crypto_data_l(32'd0),
+    .crypto_data_r(32'd0),
 
-    .rd_out(wb_rd),
+    .we(wb_we),
+    .waddr(wb_waddr),
+    .wdata(wb_wdata),
 
-    .reg_write(wb_enable)
-
+    .conflict(wb_conflict)
 
 );
+
+// El banco de registros dentro de ID tiene un único puerto de escritura: el de
+// la ALU (puerto 0 de wb).
+
+assign wb_enable = wb_we[0];
+
+assign wb_rd = wb_waddr[0];
+
+assign wb_data = wb_wdata[0];
+
     assign debug_result = wb_data;
 
     assign debug_rd = wb_rd;

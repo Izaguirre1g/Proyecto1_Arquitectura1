@@ -74,6 +74,12 @@ initial begin
 
     reset = 0;
 
+    // El programa de instruction_memory asume x2 = 20 y x3 = 30. El banco de
+    // registros ya no trae esos valores fijos en el RTL (el reset lo deja en
+    // 0), así que el testbench los carga después del reset.
+    DUT.ID.registers.regs[2] = 32'd20;
+    DUT.ID.registers.regs[3] = 32'd30;
+
     $display("CPU INICIANDO");
 
 

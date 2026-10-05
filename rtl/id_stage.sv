@@ -82,21 +82,25 @@ decoder_alu decoder (
 );
 
 // Register File
-register_file registers (
+// Mientras sólo exista el camino ALU se instancia con 2 lecturas y 1 escritura.
+// Al integrar LSU, BRU y CRIPTO, el banco debe compartirse entre los 4 slots
+// con su configuración por defecto (8 lecturas / 5 escrituras).
+regfile #(
+
+    .NUM_READ_PORTS(2),
+    .NUM_WRITE_PORTS(1)
+
+) registers (
 
     .clk(clk),
+    .reset(reset),
 
-    .rs1_addr(rs1),
-    .rs2_addr(rs2),
+    .raddr({rs2, rs1}),
+    .rdata({rs2_data, rs1_data}),
 
-    .rs1_data(rs1_data),
-    .rs2_data(rs2_data),
-
-    .rd_addr(wb_rd),
-
-    .write_data(wb_data),
-
-    .reg_write(wb_enable)
+    .we(wb_enable),
+    .waddr(wb_rd),
+    .wdata(wb_data)
 
 );
 

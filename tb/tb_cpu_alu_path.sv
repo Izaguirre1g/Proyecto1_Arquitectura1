@@ -109,22 +109,45 @@ module tb_cpu_alu_path;
     // WB
     // ===================================
 
+    wire [4:0] wb_we;
+    wire [4:0][4:0] wb_waddr;
+    wire [4:0][31:0] wb_wdata;
+
     wb WB (
 
-        .result_in(result),
+        .alu_we(1'b1),
 
-        .rd_in(rd),
+        .alu_rd(rd),
 
-        .valid_in(1'b1),
+        .alu_data(result),
 
+        .lsu_we(1'b0),
+        .lsu_rd(5'd0),
+        .lsu_data(32'd0),
 
-        .write_data(wb_data),
+        .bru_we(1'b0),
+        .bru_rd(5'd0),
+        .bru_data(32'd0),
 
-        .rd_out(wb_rd),
+        .crypto_we(1'b0),
+        .crypto_rd(5'd0),
+        .crypto_data_l(32'd0),
+        .crypto_data_r(32'd0),
 
-        .reg_write(wb_enable)
+        .we(wb_we),
+
+        .waddr(wb_waddr),
+
+        .wdata(wb_wdata),
+
+        .conflict()
 
     );
+
+    // El banco de id_stage tiene un solo puerto de escritura: el de la ALU
+    assign wb_enable = wb_we[0];
+    assign wb_rd = wb_waddr[0];
+    assign wb_data = wb_wdata[0];
 
 
 
@@ -141,6 +164,10 @@ module tb_cpu_alu_path;
 
 
         clk = 0;
+
+        // x2 y x3 ya no vienen fijos en el RTL del banco de registros
+        ID.registers.regs[2] = 32'd20;
+        ID.registers.regs[3] = 32'd30;
 
 
         // =====================================
