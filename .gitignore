@@ -1,0 +1,4 @@
+# Productos de simulación (make sim)
+build/
+*.vcd
+*.vvp
