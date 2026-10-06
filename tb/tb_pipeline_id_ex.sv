@@ -4,17 +4,19 @@
 module tb_pipeline_id_ex;
 
 
+    // ==================================================
     // Entradas
+    // ==================================================
 
     logic clk;
     logic reset;
 
-
     logic [3:0] alu_op;
 
     logic [4:0] rd;
-    logic [4:0] rs1;
-    logic [4:0] rs2;
+
+    logic [31:0] operand_a;
+    logic [31:0] operand_b;
 
     logic [10:0] imm;
 
@@ -23,14 +25,16 @@ module tb_pipeline_id_ex;
     logic valid_in;
 
 
-
+    // ==================================================
     // Salidas
+    // ==================================================
 
     logic [3:0] alu_op_out;
 
     logic [4:0] rd_out;
-    logic [4:0] rs1_out;
-    logic [4:0] rs2_out;
+
+    logic [31:0] operand_a_out;
+    logic [31:0] operand_b_out;
 
     logic [10:0] imm_out;
 
@@ -39,19 +43,23 @@ module tb_pipeline_id_ex;
     logic valid_out;
 
 
-
-    // Instancia DUT
+    // ==================================================
+    // Instancia del DUT
+    // ==================================================
 
     pipeline_id_ex DUT (
 
         .clk(clk),
+
         .reset(reset),
 
         .alu_op(alu_op),
 
         .rd(rd),
-        .rs1(rs1),
-        .rs2(rs2),
+
+        .operand_a(operand_a),
+
+        .operand_b(operand_b),
 
         .imm(imm),
 
@@ -63,8 +71,10 @@ module tb_pipeline_id_ex;
         .alu_op_out(alu_op_out),
 
         .rd_out(rd_out),
-        .rs1_out(rs1_out),
-        .rs2_out(rs2_out),
+
+        .operand_a_out(operand_a_out),
+
+        .operand_b_out(operand_b_out),
 
         .imm_out(imm_out),
 
@@ -75,22 +85,27 @@ module tb_pipeline_id_ex;
     );
 
 
-
+    // ==================================================
     // Reloj
+    // ==================================================
 
     always #5 clk = ~clk;
 
 
+    // ==================================================
+    // Pruebas
+    // ==================================================
 
     initial begin
 
-
         $dumpfile("pipeline_id_ex.vcd");
-        $dumpvars(0,tb_pipeline_id_ex);
+
+        $dumpvars(0, tb_pipeline_id_ex);
 
 
-
+        // ==================================================
         // Valores iniciales
+        // ==================================================
 
         clk = 0;
 
@@ -99,8 +114,10 @@ module tb_pipeline_id_ex;
         alu_op = 0;
 
         rd = 0;
-        rs1 = 0;
-        rs2 = 0;
+
+        operand_a = 0;
+
+        operand_b = 0;
 
         imm = 0;
 
@@ -109,28 +126,30 @@ module tb_pipeline_id_ex;
         valid_in = 0;
 
 
-
+        // ==================================================
         // Reset por un ciclo
+        // ==================================================
 
         #10;
-
-
 
         reset = 0;
 
 
-
         // ==================================================
         // Caso 1: suma x5,x2,x3
+        //
+        // operand_a = 20
+        // operand_b = 30
+        // resultado esperado posteriormente = 50
         // ==================================================
 
-        alu_op = 4'd0; // ALU_ADD
+        alu_op = 4'd0;
 
         rd = 5;
 
-        rs1 = 2;
+        operand_a = 20;
 
-        rs2 = 3;
+        operand_b = 30;
 
         imm = 0;
 
@@ -139,57 +158,71 @@ module tb_pipeline_id_ex;
         valid_in = 1;
 
 
-
         #10;
 
 
         $display("========= SUMA =========");
 
         $display("ALU_OP=%d", alu_op_out);
-        $display("RD=%d", rd_out);
-        $display("RS1=%d", rs1_out);
-        $display("RS2=%d", rs2_out);
-        $display("IMM=%d", imm_out);
-        $display("USE_IMM=%b", use_imm_out);
-        $display("VALID=%b", valid_out);
 
+        $display("RD=%d", rd_out);
+
+        $display("OPERAND_A=%d", operand_a_out);
+
+        $display("OPERAND_B=%d", operand_b_out);
+
+        $display("IMM=%d", imm_out);
+
+        $display("USE_IMM=%b", use_imm_out);
+
+        $display("VALID=%b", valid_out);
 
 
         // ==================================================
         // Caso 2: sumai x7,x4,20
+        //
+        // operand_a = 10
+        // immediate = 20
+        //
+        // La etapa ID/EX solamente transporta las señales.
         // ==================================================
 
         alu_op = 4'd0;
 
         rd = 7;
 
-        rs1 = 4;
+        operand_a = 10;
 
-        rs2 = 0;
+        operand_b = 20;
 
         imm = 20;
 
         use_imm = 1;
 
+        valid_in = 1;
 
 
         #10;
 
 
-
         $display("========= SUMAI =========");
 
         $display("ALU_OP=%d", alu_op_out);
+
         $display("RD=%d", rd_out);
-        $display("RS1=%d", rs1_out);
+
+        $display("OPERAND_A=%d", operand_a_out);
+
+        $display("OPERAND_B=%d", operand_b_out);
+
         $display("IMM=%d", imm_out);
+
         $display("USE_IMM=%b", use_imm_out);
+
         $display("VALID=%b", valid_out);
 
 
-
         $finish;
-
 
     end
 

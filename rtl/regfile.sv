@@ -33,8 +33,9 @@
               4      slot 3  CRIPTO  rd+1 (R_out de fsl / fsli)
 
  El orden de los puertos de escritura coincide con las salidas del módulo wb.
- Un módulo puede instanciar menos puertos (por ejemplo id_stage, que mientras
- sólo exista el camino ALU usa 2 lecturas y 1 escritura).
+ Un módulo puede instanciar menos puertos mediante los parámetros
+ NUM_READ_PORTS y NUM_WRITE_PORTS. cpu_top lo instancia con la configuración
+ completa.
 
  Temporización y dependencias de datos:
  ------------------------------------------------------------------------------

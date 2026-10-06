@@ -186,28 +186,28 @@ logic use_imm;
 
 
 
-logic [4:0] wb_rd;
+logic [4:0] rs1;
 
-logic [31:0] wb_data;
+logic [4:0] rs2;
 
-logic wb_enable;
+logic [31:0] rs1_data;
+
+logic [31:0] rs2_data;
 
 
 
 id_stage ID (
 
-    .clk(clk),
-
-    .reset(reset),
-
     .instruction(instruction),
 
 
-    .wb_rd(wb_rd),
+    .rs1(rs1),
 
-    .wb_data(wb_data),
+    .rs2(rs2),
 
-    .wb_enable(wb_enable),
+    .rs1_data(rs1_data),
+
+    .rs2_data(rs2_data),
 
 
     .alu_op(alu_op),
@@ -387,20 +387,66 @@ wb WB (
 
 );
 
-// El banco de registros dentro de ID tiene un único puerto de escritura: el de
-// la ALU (puerto 0 de wb).
+// =====================================
+// REGISTER FILE
+// =====================================
 
-assign wb_enable = wb_we[0];
+// Banco compartido por los 4 slots, con su configuración completa:
+// 8 lecturas y 5 escrituras (ver regfile.sv).
+//
+//   Lectura   0, 1  slot 0 ALU     (conectado a ID)
+//             2, 3  slot 1 LSU     (pendiente: Alejandro/Dylan)
+//             4, 5  slot 2 BRU     (pendiente)
+//             6, 7  slot 3 CRIPTO  (pendiente)
+//
+//   Escritura 0..4  salidas de wb (ALU, LSU, BRU, CRIPTO rd, CRIPTO rd+1)
+//
+// Las lecturas de las unidades aún no integradas quedan en x0 (siempre 0);
+// al conectar cada decoder basta con reemplazar su par de direcciones y
+// tomar sus datos de reg_rdata.
 
-assign wb_rd = wb_waddr[0];
+logic [7:0][4:0] reg_raddr;
 
-assign wb_data = wb_wdata[0];
+logic [7:0][31:0] reg_rdata;
 
-    assign debug_result = wb_data;
 
-    assign debug_rd = wb_rd;
+assign reg_raddr = {
 
-    assign debug_write = wb_enable;
+    5'd0, 5'd0,     // slot 3 CRIPTO
+    5'd0, 5'd0,     // slot 2 BRU
+    5'd0, 5'd0,     // slot 1 LSU
+    rs2,  rs1       // slot 0 ALU
+
+};
+
+assign rs1_data = reg_rdata[0];
+
+assign rs2_data = reg_rdata[1];
+
+
+regfile REGFILE (
+
+    .clk(clk),
+
+    .reset(reset),
+
+    .raddr(reg_raddr),
+
+    .rdata(reg_rdata),
+
+    .we(wb_we),
+
+    .waddr(wb_waddr),
+
+    .wdata(wb_wdata)
+
+);
+
+    assign debug_result = wb_wdata[0];
+
+    assign debug_rd = wb_waddr[0];
+
+    assign debug_write = wb_we[0];
 
 
 endmodule

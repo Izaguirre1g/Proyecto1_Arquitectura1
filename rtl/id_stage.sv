@@ -12,7 +12,7 @@
  Componentes integrados:
  ------------------------------------------------------------------------------
  - Decoder ALU.
- - Register File.
+ (El Register File se encuentra en cpu_top.)
 
  Salidas:
  ------------------------------------------------------------------------------
@@ -28,17 +28,16 @@
 `include "isa_defs.sv"
 module id_stage(
 
-    input logic clk,
-    input logic reset,
-
     input logic [31:0] instruction,
 
 
-    // Escritura desde WB
+    // Banco de registros (vive en cpu_top, compartido entre los 4 slots)
 
-    input logic [4:0] wb_rd,
-    input logic [31:0] wb_data,
-    input logic wb_enable,
+    output logic [4:0] rs1,
+    output logic [4:0] rs2,
+
+    input logic [31:0] rs1_data,
+    input logic [31:0] rs2_data,
 
 
     // Salidas hacia ID/EX
@@ -55,12 +54,6 @@ module id_stage(
     output logic use_imm
 
 );
-
-logic [4:0] rs1;
-logic [4:0] rs2;
-
-logic [31:0] rs1_data;
-logic [31:0] rs2_data;
 
 // Decoder
 
@@ -82,27 +75,9 @@ decoder_alu decoder (
 );
 
 // Register File
-// Mientras sólo exista el camino ALU se instancia con 2 lecturas y 1 escritura.
-// Al integrar LSU, BRU y CRIPTO, el banco debe compartirse entre los 4 slots
-// con su configuración por defecto (8 lecturas / 5 escrituras).
-regfile #(
-
-    .NUM_READ_PORTS(2),
-    .NUM_WRITE_PORTS(1)
-
-) registers (
-
-    .clk(clk),
-    .reset(reset),
-
-    .raddr({rs2, rs1}),
-    .rdata({rs2_data, rs1_data}),
-
-    .we(wb_enable),
-    .waddr(wb_rd),
-    .wdata(wb_data)
-
-);
+// El banco ya no vive en esta etapa: está en cpu_top con su configuración
+// completa (8 lecturas / 5 escrituras) y se comparte entre los 4 slots. Esta
+// etapa entrega los índices rs1/rs2 del slot ALU y recibe sus datos leídos.
 
 assign operand_a = rs1_data;
 assign operand_b = use_imm ? {{21{imm[10]}},imm} : rs2_data; //Aquí se hace el selector del segundo operando.

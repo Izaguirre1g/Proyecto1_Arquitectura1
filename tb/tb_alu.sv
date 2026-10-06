@@ -25,8 +25,8 @@
  Parte 2 - Instrucciones ALU del ISA a través de la etapa ID:
    Cada una de las 18 instrucciones ALU del ISA (10 tipo registro y 8 tipo
    inmediato), además de los pseudo mov y not, se codifica con los valores
-   binarios de ISA_Proyecto.md y pasa por id_stage (decoder_alu, banco de
-   registros y extensión de signo del inmediato) y luego por la ALU. Se
+   binarios de ISA_Proyecto.md y pasa por id_stage (decoder_alu y extensión de signo
+   del inmediato) con el banco de registros conectado aparte, y luego por la ALU. Se
    verifican el código de operación, el registro destino, el uso de inmediato
    y el resultado.
 
@@ -92,14 +92,37 @@ logic id_use_imm;
 logic [31:0] id_result;
 
 
-id_stage ID (
+logic [4:0] id_rs1;
+logic [4:0] id_rs2;
+logic [31:0] id_rs1_data;
+logic [31:0] id_rs2_data;
+
+// El banco de registros vive en cpu_top; aquí se instancia aparte con 2
+// lecturas y 1 escritura (sólo el slot ALU).
+regfile #(
+
+    .NUM_READ_PORTS(2),
+    .NUM_WRITE_PORTS(1)
+
+) RF (
 
     .clk(clk),
     .reset(reset),
+    .raddr({id_rs2, id_rs1}),
+    .rdata({id_rs2_data, id_rs1_data}),
+    .we(wb_enable),
+    .waddr(wb_rd),
+    .wdata(wb_data)
+);
+
+
+id_stage ID (
+
     .instruction(instruction),
-    .wb_rd(wb_rd),
-    .wb_data(wb_data),
-    .wb_enable(wb_enable),
+    .rs1(id_rs1),
+    .rs2(id_rs2),
+    .rs1_data(id_rs1_data),
+    .rs2_data(id_rs2_data),
     .alu_op(id_alu_op),
     .operand_a(id_operand_a),
     .operand_b(id_operand_b),
@@ -200,7 +223,7 @@ function automatic logic [31:0] enc_imm(input logic [3:0] id, input logic [4:0] 
 endfunction
 
 
-// Escribe un registro por el puerto de escritura de id_stage
+// Escribe un registro por el puerto de escritura del banco
 task automatic write_reg(input logic [4:0] r, input logic [31:0] v);
 
     @(negedge clk);

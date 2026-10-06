@@ -46,20 +46,44 @@ module tb_cpu_alu_path;
     // ID
     // ===================================
 
-    id_stage ID (
+    logic [4:0] rs1;
+    logic [4:0] rs2;
+    logic [31:0] rs1_data;
+    logic [31:0] rs2_data;
+
+    // El banco de registros vive en cpu_top; aquí se instancia aparte con 2
+    // lecturas y 1 escritura (sólo el slot ALU).
+    regfile #(
+
+        .NUM_READ_PORTS(2),
+        .NUM_WRITE_PORTS(1)
+
+    ) REGFILE (
 
         .clk(clk),
-
         .reset(1'b0),
+
+        .raddr({rs2, rs1}),
+        .rdata({rs2_data, rs1_data}),
+
+        .we(wb_enable),
+        .waddr(wb_rd),
+        .wdata(wb_data)
+
+    );
+
+    id_stage ID (
 
         .instruction(instruction),
 
 
-        .wb_rd(wb_rd),
+        .rs1(rs1),
 
-        .wb_data(wb_data),
+        .rs2(rs2),
 
-        .wb_enable(wb_enable),
+        .rs1_data(rs1_data),
+
+        .rs2_data(rs2_data),
 
 
         .alu_op(alu_op),
@@ -144,7 +168,7 @@ module tb_cpu_alu_path;
 
     );
 
-    // El banco de id_stage tiene un solo puerto de escritura: el de la ALU
+    // El banco de este testbench tiene un solo puerto de escritura: el de la ALU
     assign wb_enable = wb_we[0];
     assign wb_rd = wb_waddr[0];
     assign wb_data = wb_wdata[0];
@@ -166,8 +190,8 @@ module tb_cpu_alu_path;
         clk = 0;
 
         // x2 y x3 ya no vienen fijos en el RTL del banco de registros
-        ID.registers.regs[2] = 32'd20;
-        ID.registers.regs[3] = 32'd30;
+        REGFILE.regs[2] = 32'd20;
+        REGFILE.regs[3] = 32'd30;
 
 
         // =====================================

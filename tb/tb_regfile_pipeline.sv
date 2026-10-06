@@ -134,18 +134,18 @@ initial begin
 
     tb_section("Distancia entre productor y consumidor (x2 = 7 en B0)");
 
-    check("distancia 1: x5 lee el valor anterior", DUT.ID.registers.regs[5], 32'd0);
-    check("distancia 2: x6 lee el valor anterior", DUT.ID.registers.regs[6], 32'd0);
-    check("distancia 3: x7 lee el valor nuevo",    DUT.ID.registers.regs[7], 32'd7);
+    check("distancia 1: x5 lee el valor anterior", DUT.REGFILE.regs[5], 32'd0);
+    check("distancia 2: x6 lee el valor anterior", DUT.REGFILE.regs[6], 32'd0);
+    check("distancia 3: x7 lee el valor nuevo",    DUT.REGFILE.regs[7], 32'd7);
 
     tb_section("Resto del programa");
 
-    check("x8 = -5 (inmediato negativo)",         DUT.ID.registers.regs[8], -32'sd5);
-    check("x9 = x8 + x7 a distancias 3 y 4",      DUT.ID.registers.regs[9], 32'd2);
-    check("x0 sigue en 0",                        DUT.ID.registers.regs[0], 32'd0);
-    check("x2 = 8",                               DUT.ID.registers.regs[2], 32'd8);
-    check("x10: distancia 1 lee x2 anterior (7)", DUT.ID.registers.regs[10], 32'd7);
-    check("x11: distancia 4 lee x2 nuevo (8)",    DUT.ID.registers.regs[11], 32'd8);
+    check("x8 = -5 (inmediato negativo)",         DUT.REGFILE.regs[8], -32'sd5);
+    check("x9 = x8 + x7 a distancias 3 y 4",      DUT.REGFILE.regs[9], 32'd2);
+    check("x0 sigue en 0",                        DUT.REGFILE.regs[0], 32'd0);
+    check("x2 = 8",                               DUT.REGFILE.regs[2], 32'd8);
+    check("x10: distancia 1 lee x2 anterior (7)", DUT.REGFILE.regs[10], 32'd7);
+    check("x11: distancia 4 lee x2 nuevo (8)",    DUT.REGFILE.regs[11], 32'd8);
     check("sin conflictos de writeback",          conflicts, 0);
 
 

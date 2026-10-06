@@ -24,7 +24,7 @@
    8. Conflictos de escritura: gana el puerto de índice mayor.
    9. Reset en medio de la ejecución.
   10. N_RANDOM ciclos aleatorios comparados contra un modelo de referencia.
-  11. Configuración de 2 lecturas y 1 escritura (la que usa hoy id_stage).
+  11. Configuración de 2 lecturas y 1 escritura (configuración reducida, ya no usada por el CPU).
 
  El estímulo cambia en el flanco negativo y el banco escribe en el positivo.
 

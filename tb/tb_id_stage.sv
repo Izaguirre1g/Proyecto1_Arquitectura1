@@ -28,16 +28,42 @@ module tb_id_stage;
 
 
 
-    id_stage DUT (
+    // El banco de registros vive en cpu_top; aquí se instancia aparte con la
+    // configuración de 2 lecturas y 1 escritura (sólo el slot ALU).
+
+    logic [4:0] rs1;
+    logic [4:0] rs2;
+
+    logic [31:0] rs1_data;
+    logic [31:0] rs2_data;
+
+    regfile #(
+
+        .NUM_READ_PORTS(2),
+        .NUM_WRITE_PORTS(1)
+
+    ) registers (
 
         .clk(clk),
         .reset(reset),
 
+        .raddr({rs2, rs1}),
+        .rdata({rs2_data, rs1_data}),
+
+        .we(wb_enable),
+        .waddr(wb_rd),
+        .wdata(wb_data)
+
+    );
+
+    id_stage DUT (
+
         .instruction(instruction),
 
-        .wb_rd(wb_rd),
-        .wb_data(wb_data),
-        .wb_enable(wb_enable),
+        .rs1(rs1),
+        .rs2(rs2),
+        .rs1_data(rs1_data),
+        .rs2_data(rs2_data),
 
         .alu_op(alu_op),
 
