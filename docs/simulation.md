@@ -72,7 +72,7 @@ Simulando 14 testbenches con Icarus Verilog version 12.0 (stable) ()
   PASS         tb_regfile
   PASS         tb_regfile_pipeline
   PASS         tb_wb
-Resumen: 4 PASS, 0 FAIL, 1 NO-COMPILA, 9 SIN-CHEQUEO
+Resumen: 4 PASS, 0 FAIL, 0 NO-COMPILA, 10 SIN-CHEQUEO
 Logs y ondas en build/<testbench>/
 ```
 
@@ -294,10 +294,8 @@ que se migren al formato de la sección 5.
 
 ## 10. Pendientes
 
-- `tb_pipeline_id_ex` no compila: usa los puertos `rs1`, `rs2`, `rs1_out` y `rs2_out`, que ya no
-  existen en `pipeline_id_ex`.
 - Migrar los testbenches `SIN-CHEQUEO` al formato estándar.
-- Mover el banco de registros a `cpu_top` con 8 lecturas y 5 escrituras cuando se integren LSU, BRU
-  y CRIPTO.
+- Conectar las lecturas 2–7 del banco y las entradas `lsu_*`, `bru_*` y `crypto_*` de `wb` cuando
+  se integren LSU, BRU y CRIPTO (ver [Integración actual](#integración-actual)).
 - Comunicar la regla de dependencias de la sección 6 al ensamblador y al grupo de CE1108.
 - Soporte opcional de Verilator en el Makefile.
