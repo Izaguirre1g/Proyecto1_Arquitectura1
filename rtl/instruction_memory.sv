@@ -130,7 +130,7 @@ end
 
 
 
-always @(*) begin
+always @(address) begin
 
     instruction_bundle = memory[address >> 4];
 

@@ -1,42 +1,60 @@
-`timescale 1ns/1ps
 /*
-Este módulo representa el registro de pipeline entre las etapas de Instruction Fetch (IF) y Instruction Decode (ID). 
-Su función principal es almacenar temporalmente los datos que se transfieren de la etapa de IF a la etapa de ID en el siguiente ciclo de reloj.
-Entradas:   
-- clk: Señal de reloj que sincroniza la operación del registro.
-- reset: Señal de reinicio que inicializa el registro a un estado conocido.
-- bundle_in: Datos de entrada del registro.
-- pc_in: Dirección de memoria del programa de entrada.
-- valid_in: Señal de validación de los datos de entrada.
+================================================================================
+ Módulo: pipeline_if_id
 
-Salidas:
-- bundle_out: Datos de salida del registro.
-- pc_out: Dirección de memoria del programa de salida.
-- valid_out: Señal de validación de los datos de salida.
+ Descripción:
+ ------------------------------------------------------------------------------
+ Registro de pipeline entre Instruction Fetch (IF) e Instruction Decode (ID).
+ Almacena el bundle, el PC asociado y la señal de validez durante un ciclo.
 
+ Cuando el BRU produce un salto (branch_flush), los dos bundles que ya
+ están en IF/ID deben descartarse para no ejecutar las instrucciones que
+ están detrás del salto. Eso se hace con la entrada flush_in:
+
+     flush_in = 1  →  valid_out = 0, bundle_out = 0 (NOP equivalente)
+
+ Esta señal llega una vez que el BRU calculó el branch (ciclo N) y debe
+ afectar el bundle que está en IF/ID en el ciclo N+1. La conexión exacta
+ (combinacional desde el BRU o registrada) la hace cpu_top.sv.
+
+================================================================================
 */
-module pipeline_if_id(
-    input logic clk,
-    input logic reset,
 
-    input logic [127:0] bundle_in,
-    input logic [31:0] pc_in,
-    input logic valid_in,
+`default_nettype none
+
+
+module pipeline_if_id(
+
+    input  logic         clk,
+    input  logic         reset,
+
+    input  logic [127:0] bundle_in,
+    input  logic [31:0]  pc_in,
+    input  logic         valid_in,
+    input  logic         flush_in,        // 1 = descartar este bundle (branch en EX)
 
     output logic [127:0] bundle_out,
-    output logic [31:0] pc_out,
-    output logic valid_out
+    output logic [31:0]  pc_out,
+    output logic         valid_out
+
 );
 
+
 always @(posedge clk) begin
+
     if (reset) begin
+
         bundle_out <= 128'b0;
-        pc_out <= 32'b0;
-        valid_out <= 1'b0;
-    end else begin
-        bundle_out <= bundle_in;
-        pc_out <= pc_in;
-        valid_out <= valid_in;
+        pc_out     <= 32'b0;
+        valid_out  <= 1'b0;
+    end
+    else begin
+
+        bundle_out <= flush_in ? 128'b0 : bundle_in;
+        pc_out     <= flush_in ? 32'b0  : pc_in;
+        valid_out  <= flush_in ? 1'b0   : valid_in;
     end
 end
+
+
 endmodule

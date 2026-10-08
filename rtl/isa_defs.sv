@@ -21,11 +21,16 @@
 // Tipos de instrucción [31:25]
 // ============================================================================
 
-localparam logic [6:0] TYPE_STORE = 7'b1001001;
-localparam logic [6:0] TYPE_IMM   = 7'b1000000;
-localparam logic [6:0] TYPE_BRU   = 7'b1001011;
-localparam logic [6:0] TYPE_REG   = 7'b1101010;
-localparam logic [6:0] TYPE_CRYPTO = 7'b0000010;
+localparam logic [6:0] TYPE_STORE     = 7'b1001001;   // LSU (load/store)
+localparam logic [6:0] TYPE_IMM       = 7'b1000000;
+localparam logic [6:0] TYPE_BRU_JUMP  = 7'b1001011;   // sye (jump-and-link)
+localparam logic [6:0] TYPE_BRU_COND  = 7'b1000001;   // igualsi, igualno, menora, mayoroigual
+localparam logic [6:0] TYPE_REG       = 7'b1101010;
+localparam logic [6:0] TYPE_CRYPTO    = 7'b0000010;
+localparam logic [6:0] TYPE_NOP       = 7'b0000000;   // NOP por slot
+
+// Alias usado por decoder_lsu
+localparam logic [6:0] TYPE_LSU = TYPE_STORE;
 
 
 // ============================================================================
@@ -58,6 +63,36 @@ localparam logic [3:0] OP_CADERI = 4'b0100;
 localparam logic [3:0] OP_XORI   = 4'b0101;
 localparam logic [3:0] OP_ANDI   = 4'b0110;
 localparam logic [3:0] OP_ORI    = 4'b0111;
+
+
+// ============================================================================
+// Operaciones tipo LSU (load / store)
+// ID [24:21]
+// ============================================================================
+
+localparam logic [3:0] OP_GUARDAP  = 4'b0000;   // M[rf1+off] = rf2       (palabra 32 bits)
+localparam logic [3:0] OP_GUARDAB  = 4'b0001;   // M[rf1+off] = rf2[7:0]  (byte)
+localparam logic [3:0] OP_CARGAI  = 4'b1000;   // rg = M[rf1+off]        (palabra 32 bits)
+localparam logic [3:0] OP_CARGABAI= 4'b1001;   // rg = M[rf1+off] (byte, sign-extend)
+
+
+// ============================================================================
+// Operaciones tipo BRU condicional (tipo 7'b1000001)
+// ID [24:21]
+// ============================================================================
+
+localparam logic [3:0] OP_IGUALSI    = 4'b0001;  // if (rf1 == rf2) PC += off
+localparam logic [3:0] OP_IGUALNO    = 4'b0010;  // if (rf1 != rf2) PC += off
+localparam logic [3:0] OP_MENORA     = 4'b0100;  // if (rf1 <  rf2) PC += off   (signed)
+localparam logic [3:0] OP_MAYOROIGUAL= 4'b1000;  // if (rf1 >= rf2) PC += off   (signed)
+
+
+// ============================================================================
+// Operaciones tipo BRU jump (sye, tipo 7'b1001011)
+// ID [24:21]
+// ============================================================================
+
+localparam logic [3:0] OP_SYE = 4'b0000;        // rg = PC + 4; PC = PC + offset
 
 
 // ============================================================================
