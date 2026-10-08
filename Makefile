@@ -129,3 +129,16 @@ waves:
 
 clean:
 	rm -rf $(BUILD_DIR)
+
+
+# Pruebas del ensamblador: no requieren simulador.
+.PHONY: test-assembler test-programs
+test-assembler:
+	python3 -m unittest discover -s tests -p 'test_assembler.py' -v
+	python3 -m unittest discover -s tests -p 'test_isa.py' -v
+	python3 -m unittest discover -s tests -p 'test_bundler.py' -v
+
+# Ejecuta contra el RTL real; falla si el resultado es incorrecto.
+test-programs: check-tools
+	@command -v $(VVP) > /dev/null || { echo "No se encontró $(VVP)"; exit 1; }
+	IVERILOG=$(IVERILOG) VVP=$(VVP) python3 -m unittest discover -s tests -p 'test_cpu_program.py' -v

@@ -43,20 +43,20 @@ Slots 1 y 2 del bundle + la memoria de datos están documentados en
   combinacionales de los slots 1 y 2.
 
 Los 5 testbenches asociados (`tb_lsu.sv`, `tb_bru.sv`,
-`tb_decoder_lsu.sv`, `tb_decoder_bru.sv`, `tb_memory.sv`) están
-autoverificados y pasan con `make sim`.
+`tb_decoder_lsu.sv`, `tb_decoder_bru.sv`, `tb_memory.sv`) se ejecutan con
+`make sim`. Ver el resultado actual en `docs/compiler-integration.md`.
 
 ## Herramientas de memoria (`tools/`)
 
 ### `load_file.py`
 
 Carga un archivo `.bin` o `.hex` en una imagen de memoria compatible
-con `$readmemh` de Verilog. Útil para inicializar la memoria de
-instrucciones o de datos antes de la simulación.
+con `$readmemh` de Verilog. Se usa para la memoria de datos de 32 bits.
+Para la IMEM de bundles de 128 bits se usa `tools/assembler.py`.
 
 ```bash
-# Cargar un programa a partir de la dirección 0x0
-python tools/load_file.py programa.bin --base 0x0 --output build/prog.mem
+# Cargar datos a partir de la dirección 0x0
+python3 tools/load_file.py datos.bin --base 0x0 --output build/datos.mem
 
 # Cargar datos pre-inicializados en el segmento de datos (gp = 0x4000)
 python tools/load_file.py datos.hex --base 0x4000 --output build/data.mem
@@ -68,7 +68,7 @@ python tools/load_file.py imagen.bin --size 65536 --word-width 8
 Luego, en Verilog:
 
 ```systemverilog
-initial $readmemh("build/prog.mem", memory);
+initial $readmemh("build/datos.mem", DMEM.mem);
 ```
 
 ### `extract_data.py`
@@ -123,19 +123,31 @@ terminan con `[PASS]` o `[FAIL]`, y `make sim` falla si alguno falla o no compil
 El detalle del flujo de simulación, el formato estándar de testbench y el modelo del banco de
 registros están en [docs/simulation.md](docs/simulation.md).
 
-### Ejemplo: programa mínimo
+## Ensamblador y pruebas de programas (Javier)
 
-Un programa `.hex` que escribe `0xDEADBEEF` en la dirección `0x4000`:
-
-```
-# build/prog.hex
-0x12345000 0x00400023   # sumai rg, gp, 0    (rg = 0x4000)
-0x12345001 0xDEADBEEF   # sumai rg, rg, 1    (rg = 0xDEADBEEF, ojo al byte-enable)
-...
-```
+Requiere Python 3.10 o posterior. Los bundles se escriben en orden
+`ALU | LSU | BRU | CRIPTO`. Sintaxis y campos en [docs/assembler.md](docs/assembler.md).
 
 ```bash
-python tools/load_file.py build/prog.hex --base 0x0 --output build/prog.mem
-make sim TB=tb_cpu_top   # corre el programa
-python tools/extract_data.py build/data.mem --base 0x4000 --size 4
+make test-assembler
+python3 tools/assembler.py --input examples/alu_isa.asm \
+  --output build/alu.mem --binary build/alu.bin --listing build/alu.lst
+python3 tools/run_program.py --input examples/alu_isa.asm \
+  --expect examples/alu_isa.expected.json
+python3 tools/run_program.py --input examples/lsu_isa.asm \
+  --expect examples/lsu_isa.expected.json --expect-memory examples/lsu_isa.memory.json --cycles 80
+python3 tools/run_program.py --input examples/bru_isa.asm \
+  --expect examples/bru_isa.expected.json --cycles 80
 ```
+
+El runner carga la IMEM, ejecuta `cpu_top` y compara registros/memoria.
+Deja logs, dumps y ondas en `build/program_<nombre>/`. Admite hasta 28 bundles
+para reservar el vaciado del pipeline. Los programas con saltos deben terminar
+en un bucle estable; `--cycles` fija el momento de comprobar el resultado.
+
+`examples/mixto.asm` incluye un bundle con ALU, LSU, BRU y cripto. El ensamblador
+lo acepta, pero el runner rechaza cripto hasta que esté conectada en `cpu_top`.
+Las pruebas de codificación pasan; **la ejecución de los programas todavía
+falla en la rama base `ba1b49e`**. Los fallos y los comandos para probar la
+salida real del generador CE1108 están en
+[docs/compiler-integration.md](docs/compiler-integration.md).
