@@ -130,11 +130,11 @@ end
 
 
 
-always @(address) begin
-
-    instruction_bundle = memory[address >> 4];
-
-end
+// Lectura combinacional. Con assign la salida se actualiza también cuando
+// cambia el contenido de la memoria (por ejemplo, si un testbench o un loader
+// escribe el programa con el PC ya en 0); con always @(address) se quedaba
+// con el bundle anterior hasta que cambiara el PC.
+assign instruction_bundle = memory[address >> 4];
 
 
 
