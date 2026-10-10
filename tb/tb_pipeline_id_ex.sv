@@ -53,6 +53,8 @@ module tb_pipeline_id_ex;
 
         .reset(reset),
 
+        .flush(1'b0),
+
         .alu_op(alu_op),
 
         .rd(rd),

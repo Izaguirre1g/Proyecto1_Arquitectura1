@@ -194,6 +194,7 @@ initial begin
     addr_dut = 32'h0000_0010;
     wdata_dut = 32'h1122_3344;
     @(posedge clk);
+    ref_write_word(32'h0000_0010 >> 2, 32'h1122_3344);
 
     // Ahora sólo modificamos el byte 1 con be = 4'b0010
     @(negedge clk);

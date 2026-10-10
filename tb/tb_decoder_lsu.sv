@@ -38,6 +38,7 @@ logic [4:0]  rs1;
 logic [4:0]  rs2;
 logic [10:0] imm;
 logic        we;
+logic        valid;
 
 
 decoder_lsu DUT (
@@ -47,7 +48,8 @@ decoder_lsu DUT (
     .rs1(rs1),
     .rs2(rs2),
     .imm(imm),
-    .we(we)
+    .we(we),
+    .valid(valid)
 );
 
 
@@ -86,6 +88,7 @@ initial begin
     check("guardap: rs2", rs2, 5'd8);
     check("guardap: imm", imm, 11'sd16);
     check_true("guardap: we = 0 (store)", we === 1'b0);
+    check("guardap: valid = 1", valid, 1'b1);
 
 
     // =====================================================================
@@ -99,6 +102,7 @@ initial begin
     check("guardab: rs1", rs1, 5'd5);
     check("guardab: rs2", rs2, 5'd7);
     check_true("guardab: we = 0", we === 1'b0);
+    check("guardab: valid = 1", valid, 1'b1);
 
 
     // =====================================================================
@@ -113,6 +117,7 @@ initial begin
     check("cargai: rd (dest)", rd, 5'd10);
     check("cargai: imm", imm, 11'sd32);
     check_true("cargai: we = 1 (load)", we === 1'b1);
+    check("cargai: valid = 1", valid, 1'b1);
 
 
     // =====================================================================
@@ -126,6 +131,7 @@ initial begin
     check("cargabai: rs1 (base)", rs1, 5'd3);
     check("cargabai: rd (dest)", rd, 5'd15);
     check_true("cargabai: we = 1", we === 1'b1);
+    check("cargabai: valid = 1", valid, 1'b1);
 
 
     // =====================================================================
@@ -143,6 +149,14 @@ initial begin
     check("slot inactivo: lsu_op = 0", lsu_op, 4'b0);
     check("slot inactivo: rd = 0", rd, 5'b0);
     check("slot inactivo: we = 0", we, 1'b0);
+    check("slot inactivo: valid = 0", valid, 1'b0);
+
+    // NOP = 0x00000000 deja lsu_op = 0, que es el código de guardap:
+    // sólo valid los distingue.
+    instruction = 32'h0000_0000;
+    #1;
+    check("NOP: lsu_op = 0", lsu_op, 4'b0);
+    check("NOP: valid = 0 (no es un guardap)", valid, 1'b0);
 
 
     // =====================================================================
@@ -153,6 +167,7 @@ initial begin
     instruction = encode_lsu(4'b0010, 5'd1, 5'd2, 11'd0);  // ID no usado
     #1;
     check("ID desconocido: we = 0", we, 1'b0);
+    check("ID desconocido: valid = 0", valid, 1'b0);
 
 
     // =====================================================================
@@ -163,11 +178,15 @@ initial begin
     for (int i = 0; i < 16; i++) begin
 
         logic exp_we;
-        exp_we = (i == OP_CARGAI || i == OP_CARGABAI) ? 1'b1 : 1'b0;
+        logic exp_valid;
+        exp_we    = (i == OP_CARGAI || i == OP_CARGABAI) ? 1'b1 : 1'b0;
+        exp_valid = (i == OP_GUARDAP || i == OP_GUARDAB ||
+                     i == OP_CARGAI  || i == OP_CARGABAI) ? 1'b1 : 1'b0;
 
         instruction = encode_lsu(i[3:0], 5'd0, 5'd0, 11'd0);
         #1;
         check($sformatf("ID=%0b: we", i[3:0]), we, exp_we);
+        check($sformatf("ID=%0b: valid", i[3:0]), valid, exp_valid);
     end
 
 

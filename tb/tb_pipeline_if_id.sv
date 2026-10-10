@@ -30,6 +30,7 @@ module tb_pipeline_if_id;
         .bundle_in(bundle_in),
         .pc_in(pc_in),
         .valid_in(valid_in),
+        .flush_in(1'b0),
 
         .bundle_out(bundle_out),
         .pc_out(pc_out),
