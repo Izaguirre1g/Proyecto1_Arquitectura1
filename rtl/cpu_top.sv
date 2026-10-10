@@ -7,11 +7,18 @@
  Módulo superior del procesador VLIW.
 
  Pipeline IF / ID / EX / WB (4 etapas, 3 registros de segmentación):
-     FETCH  →  IF/ID  →  ID (dispatch + decode)  →  ID/EX  →  EX
-                                                                  ↓
-                                                                  EX/WB
-                                                                  ↓
-                                                                  WB → banco de registros
+     IF:  PC → instruction_memory → fetch (combinacional)
+          ── IF/ID ──
+     ID:  dispatch + decoders de los slots + lectura del banco de registros
+          ── ID/EX ──   (señales decodificadas y operandos leídos)
+     EX:  ALU, LSU + memoria de datos, BRU (no hay etapa MEM: el acceso a
+          memoria se hace dentro de EX)
+          ── EX/WB ──   (pipeline_ex_wb para la ALU; LSU y BRU registran
+                         su resultado internamente)
+     WB:  wb → banco de registros
+
+ Las unidades de EX toman todos sus operandos de ID/EX. Las lecturas del banco
+ (reg_rdata) corresponden al bundle que está en ID, no al que está en EX.
 
  Slots del bundle (fijos):
      slot 0 = ALU       (suma, resta, AND, OR, XOR, shifts, comparaciones,
@@ -25,11 +32,13 @@
                                   conectada directamente a la LSU.
 
  Saltos:
-     El BRU produce branch_flush + target_pc. Esas señales se conectan a:
-         - fetch.flush_in            (descarta el bundle que se va a fetchear)
-         - pipeline_if_id.flush_in   (descarta el bundle en IF/ID)
+     El BRU (en EX) produce branch_flush + target_pc. Esas señales se
+     conectan a:
+         - pipeline_if_id.flush_in   (descarta el bundle que está en IF)
+         - pipeline_id_ex.flush      (descarta el bundle que está en ID)
          - pc_branch.branch_flush    (carga el PC con target_pc)
-     Penalización: 2 ciclos (los dos bundles detrás del salto se descartan).
+     Penalización: 2 ciclos (los dos bundles detrás del salto se descartan,
+     sin delay slots). Si el salto no se toma, 0 ciclos.
      Sin forwarding ni scoreboarding entre bundles (regla del proyecto).
 
 ================================================================================
@@ -86,6 +95,7 @@ logic [4:0]  alu_rs1, alu_rs2;
 logic [31:0] alu_rs1_data, alu_rs2_data;
 
 // Decoders slot 1 (LSU)
+logic        lsu_valid;
 logic [3:0]  lsu_op;
 logic [4:0]  lsu_rd;
 logic [10:0] lsu_imm;
@@ -108,12 +118,17 @@ logic [31:0] bru_rs1_data, bru_rs2_data;
 logic        id_ex_valid;
 logic [3:0]  ex_alu_op;
 logic [4:0]  ex_alu_rd;
+logic [31:0] ex_alu_operand_a;
+logic [31:0] ex_alu_operand_b;
 logic [10:0] ex_alu_imm;
 logic        ex_alu_use_imm;
+logic        ex_lsu_valid;
 logic [3:0]  ex_lsu_op;
 logic [4:0]  ex_lsu_rd;
 logic [10:0] ex_lsu_imm;
 logic        ex_lsu_we;
+logic [31:0] ex_lsu_operand_a;
+logic [31:0] ex_lsu_operand_b;
 logic [3:0]  ex_bru_op;
 logic [4:0]  ex_bru_rd;
 logic [10:0] ex_bru_br_imm;
@@ -121,6 +136,8 @@ logic [15:0] ex_bru_jmp_imm;
 logic        ex_bru_is_branch;
 logic        ex_bru_is_jump;
 logic        ex_bru_we;
+logic [31:0] ex_bru_operand_a;
+logic [31:0] ex_bru_operand_b;
 
 // EX - ALU
 logic [31:0] ex_operand_a;
@@ -233,8 +250,7 @@ decoder_alu DECODER_ALU (
     .use_imm(alu_use_imm)
 );
 
-assign ex_operand_a = alu_rs1_data;
-assign ex_operand_b = alu_use_imm ? {{21{alu_imm[10]}}, alu_imm} : alu_rs2_data;
+// Los operandos de la ALU en EX salen de ID/EX (ver la sección EX - ALU).
 
 
 // =============================================================================
@@ -248,7 +264,8 @@ decoder_lsu DECODER_LSU (
     .rs1(lsu_rs1),
     .rs2(lsu_rs2),
     .imm(lsu_imm),
-    .we(lsu_we)
+    .we(lsu_we),
+    .valid(lsu_valid)
 );
 
 
@@ -313,6 +330,7 @@ regfile REGFILE (
 pipeline_id_ex ID_EX (
     .clk(clk),
     .reset(reset),
+    .flush(branch_flush),          // salto tomado en EX: anula el bundle de ID
 
     // ALU
     .alu_op(alu_op),
@@ -323,10 +341,13 @@ pipeline_id_ex ID_EX (
     .alu_use_imm(alu_use_imm),
 
     // LSU
+    .lsu_valid(lsu_valid),
     .lsu_op(lsu_op),
     .lsu_rd(lsu_rd),
     .lsu_imm(lsu_imm),
     .lsu_we(lsu_we),
+    .lsu_operand_a(lsu_rs1_data),
+    .lsu_operand_b(lsu_rs2_data),
 
     // BRU
     .bru_op(bru_op),
@@ -336,6 +357,8 @@ pipeline_id_ex ID_EX (
     .bru_is_branch(bru_is_branch),
     .bru_is_jump(bru_is_jump),
     .bru_we(bru_we),
+    .bru_operand_a(bru_rs1_data),
+    .bru_operand_b(bru_rs2_data),
 
     .pc_in(id_pc),
 
@@ -344,15 +367,18 @@ pipeline_id_ex ID_EX (
     // Salidas
     .alu_op_out(ex_alu_op),
     .alu_rd_out(ex_alu_rd),
-    .alu_operand_a_out(),          // sin uso (la ALU ya tiene operand_a/b directos)
-    .alu_operand_b_out(),
+    .alu_operand_a_out(ex_alu_operand_a),
+    .alu_operand_b_out(ex_alu_operand_b),
     .alu_imm_out(ex_alu_imm),
     .alu_use_imm_out(ex_alu_use_imm),
 
+    .lsu_valid_out(ex_lsu_valid),
     .lsu_op_out(ex_lsu_op),
     .lsu_rd_out(ex_lsu_rd),
     .lsu_imm_out(ex_lsu_imm),
     .lsu_we_out(ex_lsu_we),
+    .lsu_operand_a_out(ex_lsu_operand_a),
+    .lsu_operand_b_out(ex_lsu_operand_b),
 
     .bru_op_out(ex_bru_op),
     .bru_rd_out(ex_bru_rd),
@@ -361,6 +387,8 @@ pipeline_id_ex ID_EX (
     .bru_is_branch_out(ex_bru_is_branch),
     .bru_is_jump_out(ex_bru_is_jump),
     .bru_we_out(ex_bru_we),
+    .bru_operand_a_out(ex_bru_operand_a),
+    .bru_operand_b_out(ex_bru_operand_b),
 
     .pc_out(ex_pc_from_id_ex),
 
@@ -384,6 +412,10 @@ pipeline_id_ex ID_EX (
 // EX - ALU (slot 0)
 // =============================================================================
 
+// El inmediato de 11 bits se extiende con signo (convención del ISA)
+assign ex_operand_a = ex_alu_operand_a;
+assign ex_operand_b = ex_alu_use_imm ? {{21{ex_alu_imm[10]}}, ex_alu_imm} : ex_alu_operand_b;
+
 alu ALU (
     .alu_op(ex_alu_op),
     .operand_a(ex_operand_a),
@@ -399,12 +431,12 @@ alu ALU (
 lsu LSU (
     .clk(clk),
     .reset(reset),
-    .valid_in(id_ex_valid),
+    .valid_in(id_ex_valid && ex_lsu_valid),   // sólo si el slot 1 trae una instrucción LSU
     .lsu_op(ex_lsu_op),
     .rd(ex_lsu_rd),
     .imm(ex_lsu_imm),
-    .rf1_data(lsu_rs1_data),    // base address
-    .rf2_data(lsu_rs2_data),    // dato store
+    .rf1_data(ex_lsu_operand_a),    // base address
+    .rf2_data(ex_lsu_operand_b),    // dato store
     .mem_we(mem_we),
     .mem_be(mem_be),
     .mem_addr(mem_addr),
@@ -437,8 +469,8 @@ assign ex_pc = ex_pc_from_id_ex;
 bru BRU (
     .clk(clk),
     .reset(reset),
-    .rf1_data(bru_rs1_data),
-    .rf2_data(bru_rs2_data),
+    .rf1_data(ex_bru_operand_a),
+    .rf2_data(ex_bru_operand_b),
     .pc_current(ex_pc),
     .bru_op(ex_bru_op),
     .is_branch(ex_bru_is_branch),
