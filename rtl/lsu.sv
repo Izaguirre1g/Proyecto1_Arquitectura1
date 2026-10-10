@@ -19,10 +19,12 @@
        dato leído de una instrucción load está disponible en el mismo ciclo
        en que se presenta la dirección.
      - Para igualar la latencia de 1 ciclo de EX→WB con la ALU (que pasa por
-       pipeline_ex_wb), esta LSU captura internamente el load en un registro
-       que se actualiza en el flanco positivo, de modo que la escritura en
-       wb ocurre exactamente un ciclo después de la dirección, igual que la
-       ALU.
+       pipeline_ex_wb), esta LSU captura internamente el load (we, rd y el
+       dato leído) en un registro que se actualiza en el flanco positivo, de
+       modo que la escritura en wb ocurre exactamente un ciclo después de la
+       dirección, igual que la ALU.
+     - valid_in debe ser 1 sólo si el slot trae una instrucción LSU
+       (decoder_lsu.valid): lsu_op = 0 es también el código de guardap.
      - Los stores no escriben en el regfile: la señal wb_we permanece en 0.
 
  Salidas hacia la memoria (rtl/memory.sv):
@@ -121,32 +123,6 @@ assign mem_wdata = is_byte ? (rf2_data << (eff_addr[1:0] * 8)) : rf2_data;
 // disponible un ciclo después del ciclo en que la dirección se presentó.
 // ============================================================================
 
-logic       load_pending_d;   // hay un load en vuelo que escribirá en el pr\u00f3x ciclo
-logic [4:0] load_rd_d;         // rd del load en vuelo
-
-always @(posedge clk) begin
-
-    if (reset) begin
-
-        load_pending_d <= 1'b0;
-        load_rd_d      <= 5'd0;
-    end
-    else begin
-
-        load_pending_d <= valid_in && is_load;
-        load_rd_d      <= rd;
-    end
-end
-
-
-// ============================================================================
-// Salidas hacia rtl/wb.sv (combinaciónales desde el registro de pipeline)
-// ============================================================================
-
-assign wb_we = load_pending_d;
-assign wb_rd = load_rd_d;
-
-
 // Sign-extension del byte leído según eff_addr[1:0]
 logic [31:0] rdata_byte_sext;
 
@@ -163,17 +139,50 @@ always @(*) begin
     endcase
 end
 
-assign wb_data = (is_load && is_byte) ? rdata_byte_sext : mem_rdata;
+
+// El dato se registra junto con wb_we y wb_rd: en el ciclo siguiente la
+// dirección de la memoria ya es la del bundle que sigue en EX, así que el
+// dato leído tiene que quedar guardado aquí.
+logic        load_pending_d;   // hay un load en vuelo que escribirá en el próximo ciclo
+logic [4:0]  load_rd_d;        // rd del load en vuelo
+logic [31:0] load_data_d;      // dato leído por el load en vuelo
+
+always @(posedge clk) begin
+
+    if (reset) begin
+
+        load_pending_d <= 1'b0;
+        load_rd_d      <= 5'd0;
+        load_data_d    <= 32'd0;
+    end
+    else begin
+
+        load_pending_d <= valid_in && is_load;
+        load_rd_d      <= rd;
+        load_data_d    <= is_byte_load ? rdata_byte_sext : mem_rdata;
+    end
+end
+
+
+// ============================================================================
+// Salidas hacia rtl/wb.sv (desde el registro interno)
+// ============================================================================
+
+assign wb_we   = load_pending_d;
+assign wb_rd   = load_rd_d;
+assign wb_data = load_data_d;
 
 
 // ============================================================================
 // Sanity checks (sólo en simulación)
 // ============================================================================
 
+// Se revisa en el flanco, con las señales ya estables. Con always @(*) el
+// mensaje salía también por valores transitorios dentro de un mismo instante.
 `ifndef SYNTHESIS
-always @(*) begin
+always @(posedge clk) begin
 
-    if (valid_in && !is_load && !is_word_store && !is_byte_store) begin
+    if (!reset && valid_in && !is_load && !is_word_store && !is_byte_store) begin
 
         $display("[LSU] WARNING: lsu_op=%b no es una operación LSU válida", lsu_op);
     end
