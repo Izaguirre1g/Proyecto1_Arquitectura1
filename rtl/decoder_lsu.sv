@@ -15,6 +15,10 @@
  Decodifica los índices de registro y el offset de 11 bits (signed) que se usa
  para calcular la dirección efectiva en la etapa EX.
 
+ valid indica que el slot trae una de las 4 instrucciones LSU. Hace falta
+ porque el código de guardap es 0000: un NOP (0x00000000) o un ID no definido
+ también dejan lsu_op = 0, y sin valid la LSU los ejecutaría como un guardap.
+
  Este módulo es combinacional.
 
 ================================================================================
@@ -33,7 +37,8 @@ module decoder_lsu(
     output logic [4:0]  rs1,           // registro base (dirección)
     output logic [4:0]  rs2,           // registro dato (stores) / no usado en loads
     output logic [10:0] imm,           // offset de 11 bits (signed, extiende en EX)
-    output logic        we             // 1 si la instrucción escribe en regfile
+    output logic        we,            // 1 si la instrucción escribe en regfile
+    output logic        valid          // 1 si el slot trae una instrucción LSU
 );
 
 logic [6:0] instr_type;
@@ -49,6 +54,7 @@ always @(*) begin
     rs2    = 5'b0;
     imm    = 11'b0;
     we     = 1'b0;
+    valid  = 1'b0;
 
     instr_type = instruction[31:25];
     id         = instruction[24:21];
@@ -71,21 +77,25 @@ always @(*) begin
 
                 OP_GUARDAP: begin
                     lsu_op = OP_GUARDAP;
+                    valid  = 1'b1;
                     we     = 1'b0;   // store: no escribe regfile
                 end
 
                 OP_GUARDAB: begin
                     lsu_op = OP_GUARDAB;
+                    valid  = 1'b1;
                     we     = 1'b0;
                 end
 
                 OP_CARGAI: begin
                     lsu_op = OP_CARGAI;
+                    valid  = 1'b1;
                     we     = 1'b1;   // load: sí escribe regfile
                 end
 
                 OP_CARGABAI: begin
                     lsu_op = OP_CARGABAI;
+                    valid  = 1'b1;
                     we     = 1'b1;
                 end
 
