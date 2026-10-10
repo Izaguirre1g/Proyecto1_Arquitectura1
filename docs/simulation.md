@@ -65,14 +65,16 @@ Desde la raíz del repositorio:
 Ejemplo de salida de `make sim`:
 
 ```
-Simulando 14 testbenches con Icarus Verilog version 12.0 (stable) ()
+Simulando 20 testbenches con Icarus Verilog version 12.0 (stable) ()
   PASS         tb_alu
+  PASS         tb_bru
   SIN-CHEQUEO  tb_cpu_alu_path
   ...
+  PASS         tb_pipeline_integracion
   PASS         tb_regfile
   PASS         tb_regfile_pipeline
   PASS         tb_wb
-Resumen: 4 PASS, 0 FAIL, 0 NO-COMPILA, 10 SIN-CHEQUEO
+Resumen: 10 PASS, 0 FAIL, 0 NO-COMPILA, 10 SIN-CHEQUEO
 Logs y ondas en build/<testbench>/
 ```
 
@@ -216,10 +218,13 @@ con el compilador de CE1108. `tb_regfile_pipeline` la verifica sobre `cpu_top`.
 
 El banco vive en `cpu_top` (instancia `REGFILE`) con la configuración por defecto (8 lecturas y
 5 escrituras), compartido entre los cuatro slots. Las cinco escrituras están conectadas
-directamente a las salidas de `wb`. De las lecturas, sólo las 0 y 1 (slot ALU) están conectadas a
-`id_stage`, que entrega `rs1`/`rs2` y recibe `rs1_data`/`rs2_data`; las lecturas 2–7 (LSU, BRU y
-CRIPTO) quedan en x0 hasta que se integren esas unidades: cada decoder debe reemplazar su par de
-direcciones en `reg_raddr` y tomar sus datos de `reg_rdata`.
+directamente a las salidas de `wb`. Las lecturas 0–1 (ALU), 2–3 (LSU) y 4–5 (BRU) están conectadas
+a las direcciones que entrega el decoder de cada slot; las lecturas 6–7 (CRIPTO) quedan en x0 hasta
+que se integre esa unidad.
+
+Lo que se lee del banco en ID pasa por el registro ID/EX (`pipeline_id_ex`) junto con el resto de
+las señales decodificadas. Las unidades de EX deben tomar sus operandos de las salidas de ID/EX y
+nunca directamente de `reg_rdata`, que en ese ciclo ya corresponde al bundle siguiente.
 
 ## 7. Writeback (`wb`)
 
@@ -288,6 +293,11 @@ Testbenches autoverificables:
 | `tb_regfile` | Reset, escritura y lectura de los 31 registros por todos los puertos, x0, `we = 0`, ausencia de bypass, 5 escrituras y 8 lecturas simultáneas, conflictos de escritura, reset en medio de la ejecución, 2000 ciclos aleatorios contra un modelo y la configuración de 2 lecturas y 1 escritura. |
 | `tb_wb` | Cada unidad sola, `we = 0`, destino x0, bordes del par de la cripto, bundle completo con 5 escrituras, detección de conflictos, 2000 combinaciones aleatorias contra un modelo y `wb` conectado al banco. |
 | `tb_regfile_pipeline` | Regla de dependencias sobre `cpu_top`: lectura a distancias 1, 2, 3 y 4 del productor, inmediato negativo, escritura a x0 y ausencia de conflictos. |
+| `tb_pipeline_integracion` | Programas sobre `cpu_top` con los slots ALU, LSU y BRU. A: `guardap`, `guardab`, `cargai` y `cargabai` seguidos, y un NOP en el slot LSU no escribe la memoria (su `lsu_op` es 0, igual que `guardap`). B: un salto no tomado no cuesta ciclos; uno tomado (`igualno`, `sye`, `mayoroigual`) anula exactamente los 2 bundles siguientes y el destino entra a EX 3 ciclos después del salto (penalización de 2 ciclos, sin delay slots); `sye` escribe PC + 4. C: ALU, LSU y BRU en el mismo bundle, y 3 escrituras al banco en el mismo ciclo. D: bucle con salto hacia atrás. Se comprobó que falla si se reintroduce cualquiera de los errores de integración corregidos. |
+
+Los testbenches de las unidades de memoria y control (`tb_lsu`, `tb_bru`, `tb_memory`,
+`tb_decoder_lsu`, `tb_decoder_bru`) también son autoverificables; el detalle de sus casos está en
+el encabezado de cada archivo.
 
 Los demás testbenches de `tb/` muestran resultados con `$display` y aparecen como `SIN-CHEQUEO` hasta
 que se migren al formato de la sección 5.
@@ -295,7 +305,7 @@ que se migren al formato de la sección 5.
 ## 10. Pendientes
 
 - Migrar los testbenches `SIN-CHEQUEO` al formato estándar.
-- Conectar las lecturas 2–7 del banco y las entradas `lsu_*`, `bru_*` y `crypto_*` de `wb` cuando
-  se integren LSU, BRU y CRIPTO (ver [Integración actual](#integración-actual)).
+- Conectar las lecturas 6–7 del banco y las entradas `crypto_*` de `wb` cuando se integre la
+  unidad criptográfica (ver [Integración actual](#integración-actual)).
 - Comunicar la regla de dependencias de la sección 6 al ensamblador y al grupo de CE1108.
 - Soporte opcional de Verilator en el Makefile.
