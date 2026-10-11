@@ -1,7 +1,7 @@
 # Mapa de memoria — Procesador VLIW
 
 > Documento mantenido por **Alejandro (CE-4301, II Semestre 2026)**.
-> Última revisión: 7 de octubre de 2026.
+> Última revisión: 11 de octubre de 2026.
 
 Este mapa aplica a los dos espacios direccionables del procesador:
 
@@ -17,12 +17,24 @@ El PC se incrementa de a 16 (un bundle por ciclo) y se mide en bytes, así
 que las direcciones del diagrama son direcciones **byte** aunque el bus de
 instrucciones sea de 128 bits por bundle.
 
+Son dos espacios separados: el PC sólo direcciona la memoria de instrucciones
+y la LSU (y `vcr`/`camcon`) sólo la memoria de datos, así que la misma
+dirección numérica no se refiere a la misma memoria en los dos casos.
+
 ## 1. Mapa propuesto
+
+Memoria de instrucciones:
+
+| Rango              | Tamaño  | Uso                                                    |
+|-------------------|---------|--------------------------------------------------------|
+| `0x0000 – 0x3FE0` | 1023 bundles | Programa. Después del reset el PC empieza en `0x0000`. |
+| `0x3FF0`          | 1 bundle | Manejador de excepciones (`TRAP_VECTOR`).             |
+
+Memoria de datos:
 
 | Rango              | Tamaño  | Uso propuesto                                          | Notas |
 |-------------------|---------|--------------------------------------------------------|-------|
-| `0x0000 – 0x00FF` | 256 B   | Vector de arranque / código de boot                    | Convención de la familia RISC-V; útil al portar un BIOS mínimo. |
-| `0x0100 – 0x3FFF` | ~16 KB  | Programa principal                                     | Donde va el cuerpo del programa. |
+| `0x0000 – 0x3FFF` | 16 KB   | Libre                                                  | `make archivo` usa `0x100`–`0x11F` para la contraseña, la llave y el fin, y carga el archivo desde `0x200`. |
 | `0x4000 – 0x7FFF` | 16 KB   | Datos globales (`gp = 0x4000`)                         | Direccionamiento relativo a `gp`. |
 | `0x8000 – 0xFFFF` | 32 KB   | Stack (`sp`) y heap                                    | El stack crece hacia abajo; el heap hacia arriba. |
 
@@ -32,15 +44,17 @@ instrucciones sea de 128 bits por bundle.
 
 ## 2. Mapa de registros
 
+Es el ABI de `ISA_Proyecto.md` (sección "Registros de propósito general"),
+el mismo que usan los alias del ensamblador.
+
 | Registro | Uso                                       | Notas                              |
 |----------|-------------------------------------------|------------------------------------|
 | `x0`     | Cero cableado                             | Cualquier escritura se ignora.     |
 | `x1`     | `ra` — link register (`sye`, `ret`)      | También libre si no hay saltos.    |
 | `x2`     | `sp` — stack pointer                    | Crece hacia abajo.                 |
 | `x3`     | `gp` — global pointer (`= 0x4000`)      | Base para direccionamiento.        |
-| `x4..x7` | Temporales                               |                                    |
-| `x8..x15`| Salvos por convención                    | El software debe preservarlos.    |
-| `x16..x31`| Temporales del programador              |                                    |
+| `x4..x15` | `t0..t11` — temporales                  | No se preservan entre llamadas.    |
+| `x16..x31`| `s0..s15` — preservados                 | El llamado los guarda si los usa.  |
 
 ## 3. Dependencias entre bundles
 
@@ -57,15 +71,15 @@ Concretamente:
 
 Reglas prácticas para el programador:
 
-- `bundle N`: produce `x3` con `sumai x3 = x1 + 4`
-- `bundle N+1`: NOP (o independiente de `x3`)
-- `bundle N+2`: NOP (o independiente de `x3`)
-- `bundle N+3`: puede consumir `x3` con cualquier instrucción
+- `bundle N`: produce `x5` con `sumai x5, x4, 4`
+- `bundle N+1`: NOP (o independiente de `x5`)
+- `bundle N+2`: NOP (o independiente de `x5`)
+- `bundle N+3`: puede consumir `x5` con cualquier instrucción
 
-Las instrucciones LSU son un poco más lentas: el dato leído en EX pasa
-por el registro interno de la LSU en `lsu.sv` y se escribe en WB en el
-siguiente ciclo. **Por consistencia se las trata como cualquier otra**:
-el dato escrito lo puede leer el bundle N+3.
+Las cargas siguen la misma regla: el dato leído en EX pasa por el registro
+interno de `lsu.sv`, que cumple el papel del registro EX/WB, y se escribe en
+el mismo ciclo que el resultado de la ALU. El valor cargado lo puede leer el
+bundle N+3.
 
 ## 4. Saltos y estrategia de flush
 
@@ -79,8 +93,8 @@ el dato escrito lo puede leer el bundle N+3.
   WB; el bundle destino ya puede leerlo, porque los 2 bundles anulados
   cubren esa latencia.
 
-Más detalles en [`docs/interfaces.md`](./interfaces.md) (cuando esté
-disponible) y en el comentario de `rtl/bru.sv`.
+Más detalles en [`docs/simulation.md`](./simulation.md) (sección 6) y en
+el comentario de `rtl/bru.sv`.
 
 ## 5. Formato del archivo `.mem`
 
@@ -88,28 +102,31 @@ disponible) y en el comentario de `rtl/bru.sv`.
 `$readmemh` de Verilog. Cada línea contiene:
 
 - **palabra de 32 bits** (default) little-endian: 8 caracteres hex,
-  uno por bundle de 4 bytes.
+  una línea por palabra de 4 bytes. Es el formato de `memory.sv`.
 - **byte individual** (`--word-width 8`): 2 caracteres hex, uno por
   byte.
 
-Ejemplo — un programa mínimo que escribe 0xDEADBEEF en la dirección
-`0x4000`:
+Ejemplo: un archivo `datos.hex` con cuatro palabras, cargado en la
+dirección `0x1000` de la memoria de datos:
 
 ```
 # Comentario
 0xCAFEBABE 0x12345678 0x11223344 0x55667788
 ```
 
-Cargado con:
+```
+python3 tools/load_file.py datos.hex --base 0x1000 --size 65536 \
+       --output build/datos.mem
+```
 
-```
-python tools/load_file.py programa.hex --base 0x1000 --size 65536 \
-       --output build/prog.mem
-```
+En un `.hex`, un valor menor o igual a `0xFF` se toma como un solo byte y
+uno mayor como una palabra de 4 bytes. Cualquier otro archivo (`.txt`,
+`.bin`, imágenes) se carga byte por byte.
 
 ## 6. Herramientas asociadas
 
-- **`tools/load_file.py`**: convierte `.bin` o `.hex` a `.mem`.
+- **`tools/load_file.py`**: convierte cualquier archivo a `.mem` (los
+  `.hex` se leen como texto hexadecimal).
 - **`tools/extract_data.py`**: extrae un rango del `.mem` a `.bin` o
   `.hex`.
 - **`rtl/memory.sv`**: la memoria de datos (lectura combinacional,
@@ -123,10 +140,9 @@ python tools/load_file.py programa.hex --base 0x1000 --size 65536 \
   mantiene o se cambia por algo más simple (por ejemplo, todo el
   rango `0x0000 – 0xFFFF` como un único segmento plano).
 - El `load_file.py` soporta `--word-width 8` para memorias orientadas
-  a byte, pero `memory.sv` espera palabras de 32 bits con byte-enable.
-  Si se carga con `--word-width 8`, el banco de 32 bits sigue
-  funcionando porque `memory.sv` decodifica con `addr[9:2]`.
-- El límite mínimo de tamaño es **64 KB** según el enunciado. El
-  `memory.sv` lo respeta por default (`SIZE_WORDS = 16384`). Si se
-  quiere reducir para acelerar la verificación, hay un parámetro
-  `SIZE_WORDS` que se puede sobreescribir desde `top`.
+  a byte, pero `memory.sv` guarda palabras de 32 bits: `$readmemh` pondría
+  cada byte en una palabra distinta. Para `memory.sv` hay que usar el
+  formato de 32 bits (el default).
+- El límite mínimo de tamaño es **64 KB** según el enunciado. `top`
+  instancia `memory.sv` con `SIZE_WORDS = DMEM_BYTES / 4`, y `DMEM_BYTES`
+  (65536) está en `rtl/isa_defs.sv`; para cambiar el tamaño se cambia ahí.
