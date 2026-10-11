@@ -1,0 +1,6 @@
+cargai x4, x3, 0
+cargai x5, x3, 4
+suma x4, x4, x5
+sumai x5, x0, 1
+resta x4, x4, x5
+guardap x3, x4, 8
