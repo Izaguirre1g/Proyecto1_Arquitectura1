@@ -2,6 +2,8 @@
 
 // Fixture para r = (a + b) - 1, emitido por test_generacion --ejemplo.
 // Inicializar gp/datos aquí no sustituye el arranque del compilador completo.
+`include "isa_defs.sv"
+
 module tb_ce1108_program;
     logic clk = 0, reset = 1;
     string mem_path;
@@ -12,9 +14,9 @@ module tb_ce1108_program;
     initial begin
         if (!$value$plusargs("MEM=%s", mem_path) || !$value$plusargs("BUNDLES=%d", bundles))
             $fatal(1, "[FAIL] faltan MEM y BUNDLES");
-        if (bundles < 1 || bundles > 28) $fatal(1, "[FAIL] capacidad de IMEM");
+        if (bundles < 1 || bundles > IMEM_BUNDLES - 4) $fatal(1, "[FAIL] capacidad de IMEM");
         #1;
-        for (int i = 0; i < 32; i++) DUT.IMEM.memory[i] = 0;
+        for (int i = 0; i < IMEM_BUNDLES; i++) DUT.IMEM.memory[i] = 0;
         $readmemh(mem_path, DUT.IMEM.memory, 0, bundles - 1);
         for (int i = 0; i < bundles; i++)
             if ((^DUT.IMEM.memory[i]) === 1'bx) $fatal(1, "[FAIL] bundle desconocido");
