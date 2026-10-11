@@ -15,11 +15,11 @@
 #
 #  Argumentos
 # -----------------------------------------------------------------------------
-#    <input>                Ruta al archivo de entrada. Si termina en .hex o
-#                           contiene caracteres hexadecimales se interpreta como
-#                           texto hex (un valor por línea o separados por
-#                           espacios/comas). Si termina en .bin se interpreta
-#                           como bytes crudos little-endian.
+#    <input>                Ruta al archivo de entrada. Si termina en .hex se
+#                           interpreta como texto hex (un valor por línea o
+#                           separados por espacios/comas). Cualquier otro archivo
+#                           (texto, imágenes, binarios) se carga tal cual, byte
+#                           por byte.
 #    --base <addr>          Dirección base donde comienza la carga (default 0x0).
 #                           Los bytes del archivo se escriben desde esta
 #                           dirección en forma ascendente.
@@ -113,7 +113,9 @@ def load_file(input_path, base=0, size=65536, word_width=32):
     with open(input_path, 'rb') as f:
         raw = f.read()
 
-    is_text_hex = input_path.lower().endswith('.hex') or input_path.lower().endswith('.txt')
+    # Sólo .hex se interpreta como texto hexadecimal; cualquier otro archivo
+    # (.txt, imágenes, binarios) se carga byte por byte.
+    is_text_hex = input_path.lower().endswith('.hex')
     try:
         if is_text_hex:
             text = raw.decode('utf-8')
@@ -172,7 +174,7 @@ def main():
     parser = argparse.ArgumentParser(
         description="Carga un archivo binario o hexadecimal a un .mem Verilog"
     )
-    parser.add_argument("input", help="Archivo de entrada (.bin, .hex o .txt)")
+    parser.add_argument("input", help="Archivo de entrada (cualquier formato; .hex = texto hexadecimal)")
     parser.add_argument("--base", default="0x0",
                         help="Dirección base de carga (default 0x0)")
     parser.add_argument("--output", default=None,
