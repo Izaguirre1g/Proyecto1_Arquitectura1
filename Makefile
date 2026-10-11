@@ -8,6 +8,8 @@
 #    make list             lista los testbenches disponibles
 #    make archivo          cifra y descifra un archivo en el procesador
 #                          (ARCHIVO=<ruta>, por defecto examples/archivos/mensaje.txt)
+#    make test-assembler   pruebas del ensamblador (no requieren simulador)
+#    make test-programs    ejecuta los programas de examples/ sobre el RTL
 #    make clean            borra build/
 #    make help             muestra esta ayuda
 #
@@ -56,7 +58,7 @@ all: sim
 
 
 help:
-	@sed -n '2,19p' Makefile | sed 's/^# \{0,1\}//'
+	@sed -n '2,21p' Makefile | sed 's/^# \{0,1\}//'
 
 
 check-tools:
