@@ -5,13 +5,13 @@
 #  Descripción
 # -----------------------------------------------------------------------------
 #  Carga un archivo binario o hexadecimal dentro de un archivo .mem compatible
-#  con $readmemh de Verilog. Permite inicializar la memoria de instrucciones
-#  (rtl/instruction_memory.sv) o la memoria de datos (rtl/memory.sv) con datos
-#  externos.
+#  con $readmemh de Verilog. Sirve para inicializar la memoria de datos
+#  (rtl/memory.sv) con datos externos. La memoria de instrucciones usa bundles
+#  de 128 bits: su .mem lo genera tools/assembler.py.
 #
 #  Uso
 # -----------------------------------------------------------------------------
-#  python tools/load_file.py <input> [--base 0x0] [--output salida.mem] [--size 65536]
+#  python3 tools/load_file.py <input> [--base 0x0] [--output salida.mem] [--size 65536]
 #
 #  Argumentos
 # -----------------------------------------------------------------------------
@@ -40,14 +40,15 @@
 #
 #  Ejemplos
 # ----------------------------------------------------------------------------
-#  1. Cargar un binario en la dirección 0x0 de la memoria de instrucciones:
-#       python tools/load_file.py programa.bin --base 0x0 --output build/prog.mem
+#  1. Cargar un archivo en la dirección 0x200 de la memoria de datos:
+#       python3 tools/load_file.py mensaje.txt --base 0x200 --output build/datos.mem
 #
 #  2. Cargar un archivo hex a partir de 0x4000 (datos):
-#       python tools/load_file.py datos.hex --base 0x4000 --output build/data.mem
+#       python3 tools/load_file.py datos.hex --base 0x4000 --output build/data.mem
 #
-#  3. Generar imagen completa de 16 KB con bytes little-endian:
-#       python tools/load_file.py imagen.bin --size 16384 --word-width 8
+#  3. Generar imagen completa de 16 KB con un byte por línea (no sirve para
+#     memory.sv, que lee palabras de 32 bits):
+#       python3 tools/load_file.py imagen.bin --size 16384 --word-width 8
 #
 # =============================================================================
 
