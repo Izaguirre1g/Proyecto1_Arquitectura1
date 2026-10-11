@@ -6,6 +6,8 @@
 #    make tb_alu           compila y ejecuta sólo tb/tb_alu.sv
 #    make waves TB=tb_alu  abre en GTKWave el .vcd de ese testbench
 #    make list             lista los testbenches disponibles
+#    make archivo          cifra y descifra un archivo en el procesador
+#                          (ARCHIVO=<ruta>, por defecto examples/archivos/mensaje.txt)
 #    make clean            borra build/
 #    make help             muestra esta ayuda
 #
@@ -54,7 +56,7 @@ all: sim
 
 
 help:
-	@sed -n '2,17p' Makefile | sed 's/^# \{0,1\}//'
+	@sed -n '2,19p' Makefile | sed 's/^# \{0,1\}//'
 
 
 check-tools:
@@ -142,3 +144,38 @@ test-assembler:
 test-programs: check-tools
 	@command -v $(VVP) > /dev/null || { echo "No se encontró $(VVP)"; exit 1; }
 	IVERILOG=$(IVERILOG) VVP=$(VVP) python3 -m unittest discover -s tests -p 'test_cpu_program.py' -v
+
+
+# ------------------------------------------------------------------------------
+#  make archivo ARCHIVO=<ruta>
+#
+#  Cifra y descifra un archivo de cualquier formato en el procesador:
+#    1. ensambla examples/cifrar_archivo.asm y examples/descifrar_archivo.asm;
+#    2. carga el archivo en la memoria de datos desde 0x200 (tools/load_file.py);
+#    3. tests/rtl/tb_archivo.sv ejecuta los dos programas y guarda la memoria en
+#       cifrado.mem y descifrado.mem ($writememh);
+#    4. tools/extract_data.py saca cifrado.bin y descifrado.bin, y descifrado.bin
+#       se compara con el original.
+#  Todo queda en build/archivo/. Tamaño máximo: 65024 bytes (64 KB - 0x200).
+# ------------------------------------------------------------------------------
+
+ARCHIVO     ?= examples/archivos/mensaje.txt
+ARCHIVO_DIR := $(BUILD_DIR)/archivo
+
+.PHONY: archivo
+archivo: check-tools
+	@test -f "$(ARCHIVO)" || { echo "No existe el archivo $(ARCHIVO)"; exit 1; }
+	@mkdir -p $(ARCHIVO_DIR)
+	python3 tools/assembler.py --input examples/cifrar_archivo.asm --output $(ARCHIVO_DIR)/cifrar.mem
+	python3 tools/assembler.py --input examples/descifrar_archivo.asm --output $(ARCHIVO_DIR)/descifrar.mem
+	python3 tools/load_file.py "$(ARCHIVO)" --base 0x200 --output $(ARCHIVO_DIR)/datos.mem
+	$(IVERILOG) $(IVFLAGS) -s tb_archivo -o $(ARCHIVO_DIR)/sim.vvp $(RTL_SRCS) tests/rtl/tb_archivo.sv
+	@set -o pipefail; n=$$(wc -c < "$(ARCHIVO)"); \
+	( cd $(ARCHIVO_DIR) && $(VVP) $(VVPFLAGS) sim.vvp +CIFRAR=cifrar.mem +DESCIFRAR=descifrar.mem \
+	    +DATOS=datos.mem +BYTES=$$n $(PLUSARGS) 2>&1 | tee sim.log ) && \
+	python3 tools/extract_data.py $(ARCHIVO_DIR)/cifrado.mem --base 0x200 --size $$(( (n + 7) / 8 * 8 )) \
+	    --format bin --output $(ARCHIVO_DIR)/cifrado.bin && \
+	python3 tools/extract_data.py $(ARCHIVO_DIR)/descifrado.mem --base 0x200 --size $$n \
+	    --format bin --output $(ARCHIVO_DIR)/descifrado.bin && \
+	cmp "$(ARCHIVO)" $(ARCHIVO_DIR)/descifrado.bin && \
+	echo "[PASS] $(ARCHIVO): descifrado.bin es idéntico al original ($$n bytes)"
