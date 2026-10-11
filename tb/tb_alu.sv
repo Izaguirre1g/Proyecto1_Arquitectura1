@@ -22,11 +22,12 @@
    división, la resta con complemento a dos y las comparaciones invirtiendo el
    bit de signo). Los casos dirigidos también verifican el modelo.
 
- Parte 2 - Instrucciones ALU del ISA a través de la etapa ID:
+ Parte 2 - Instrucciones ALU del ISA a través del decoder:
    Cada una de las 18 instrucciones ALU del ISA (10 tipo registro y 8 tipo
    inmediato), además de los pseudo mov y not, se codifica con los valores
-   binarios de ISA_Proyecto.md y pasa por id_stage (decoder_alu y extensión de signo
-   del inmediato) con el banco de registros conectado aparte, y luego por la ALU. Se
+   binarios de ISA_Proyecto.md y pasa por decoder_alu, la lectura del banco de
+   registros y la selección del segundo operando con el inmediato extendido
+   con signo (lo mismo que hace top entre ID y EX), y luego por la ALU. Se
    verifican el código de operación, el registro destino, el uso de inmediato
    y el resultado.
 
@@ -70,7 +71,7 @@ alu DUT (
 
 
 // =====================================
-// Parte 2: ID + ALU
+// Parte 2: decoder + ALU
 // =====================================
 
 logic clk;
@@ -116,20 +117,20 @@ regfile #(
 );
 
 
-id_stage ID (
+decoder_alu DEC (
 
     .instruction(instruction),
+    .alu_op(id_alu_op),
+    .rd(id_rd),
     .rs1(id_rs1),
     .rs2(id_rs2),
-    .rs1_data(id_rs1_data),
-    .rs2_data(id_rs2_data),
-    .alu_op(id_alu_op),
-    .operand_a(id_operand_a),
-    .operand_b(id_operand_b),
-    .rd(id_rd),
     .imm(id_imm),
     .use_imm(id_use_imm)
 );
+
+// Operandos como en top: el inmediato de 11 bits se extiende con signo
+assign id_operand_a = id_rs1_data;
+assign id_operand_b = id_use_imm ? {{21{id_imm[10]}}, id_imm} : id_rs2_data;
 
 
 alu ALU_ID (
@@ -405,7 +406,7 @@ initial begin
 
 
     // =================================================
-    // Parte 2: instrucciones del ISA a través de ID
+    // Parte 2: instrucciones del ISA a través del decoder
     // =================================================
 
     @(negedge clk);
