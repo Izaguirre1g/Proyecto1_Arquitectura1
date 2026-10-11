@@ -22,6 +22,9 @@ class IsaTests(unittest.TestCase):
             'menora x4,x5,-16': 0x82842ff0,
             'mayoroigual x4,x5,-16': 0x83042ff0,
             'sye x1,32': 0x96010020,
+            'syer x0,ra,0': 0x96200800,
+            'syer x12,x9,21': 0x962c4815,
+            'syer x7,x20,-32': 0x9627a7e0,
             'fsl x6,x2,1,3': 0x040e6100,
             'fsli x6,x2,1,3': 0x042e6100,
             'ell 2,2,x4,x6': 0x04544300,
@@ -68,6 +71,27 @@ class IsaTests(unittest.TestCase):
         for source in ('sye x1,32768', 'sye x1,-32784', 'igualsi x1,x2,1024', 'sye x1,4'):
             with self.assertRaises(AssemblyError):
                 encode_instruction(source)
+
+    def test_syer_and_ret(self):
+        ret = encode_instruction('ret')
+        self.assertEqual(ret.word, encode_instruction('syer x0,ra,0').word)
+        self.assertEqual((ret.reads, ret.writes, ret.slot), ((1,), (), 2))
+        self.assertEqual(encode_instruction('syer x12,x9,0').writes, (12,))
+        for offset in (-1024, 1023):
+            self.assertEqual(encode_instruction(f'syer x0,x1,{offset}').word & 2047, offset & 2047)
+        for source in ('syer x0,x1,-1025', 'syer x0,x1,1024', 'syer x0,x1',
+                       'syer x0,x1,fin', 'ret x1'):
+            with self.subTest(source=source), self.assertRaises(AssemblyError):
+                encode_instruction(source)
+        with self.assertRaises(AssemblyError):
+            assemble_source('nop | nop | nop | nop\nret | nop | nop | nop')
+
+    def test_return_has_no_fallthrough(self):
+        # Después de ret se ejecuta el retorno, no el bundle siguiente: no hay RAW.
+        assemble_source('sumai x4,x0,1 | nop | nop | nop\nnop | nop | ret | nop\n'
+                        'mov x5,x4 | nop | nop | nop')
+        with self.assertRaisesRegex(AssemblyError, 'RAW'):
+            assemble_source('sumai x4,x0,1 | nop | nop | nop\nnop\nmov x5,x4 | nop | nop | nop')
 
     def test_labels_forward_backward_and_pc_relative(self):
         program = assemble_source('start: nop | nop | sye x0,end | nop\nnop\nend: nop | nop | igualsi x0,x0,start | nop')

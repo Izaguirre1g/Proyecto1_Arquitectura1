@@ -19,7 +19,7 @@ class BundlerTests(unittest.TestCase):
         self.assertEqual([row[2] for row in active], source.splitlines())
 
     def test_control_crypto_and_bundles_rejected(self):
-        for source in ('sye x0,0', 'vcr 256', 'nop | nop | nop | nop', '# vacío'):
+        for source in ('sye x0,0', 'syer x0,ra,0', 'ret', 'vcr 256', 'nop | nop | nop | nop', '# vacío'):
             with self.assertRaises(AssemblyError):
                 bundle_linear(source)
 
@@ -30,13 +30,13 @@ class BundlerTests(unittest.TestCase):
         with self.assertRaises(AssemblyError):
             bundle_linear('sumai x4,x0,1\n' * (n + 1))
 
-    def test_examples_cover_the_33_defined_instructions(self):
+    def test_examples_cover_the_34_defined_instructions(self):
         used = set()
         for path in (ROOT/'examples').glob('*.asm'):
             for bundle in assemble_source(path.read_text()).bundles:
                 used.update(i.text.split()[0] for i in bundle.instructions)
-        required = set(SPECS) | set(LSU_OPS) | set(BRU_OPS) | set(CRYPTO_OPS) | {'sye'}
-        self.assertEqual(len(required), 33)
+        required = set(SPECS) | set(LSU_OPS) | set(BRU_OPS) | set(CRYPTO_OPS) | {'sye', 'syer'}
+        self.assertEqual(len(required), 34)
         self.assertFalse(required - used, required - used)
 
 

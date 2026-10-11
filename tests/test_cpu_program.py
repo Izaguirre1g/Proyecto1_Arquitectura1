@@ -43,6 +43,13 @@ class CpuProgramTests(unittest.TestCase):
                         read_expected(ROOT / "examples/bru_isa.expected.json"),
                         vcd=False, cycles=80)
 
+    def test_subroutine_call_and_return(self):
+        # examples/subrutina.asm: dos llamadas con sye y retorno con syer x0,ra,0
+        with tempfile.TemporaryDirectory() as directory:
+            run_program(ROOT / "examples/subrutina.asm", Path(directory),
+                        read_expected(ROOT / "examples/subrutina.expected.json"),
+                        vcd=False, cycles=60)
+
     def test_two_nop_bundles_between_producer_and_consumer(self):
         source = (ROOT / "examples/dependencias.asm").read_text()
         self.execute(source, {0: 0, 4: 7, 5: 7})
