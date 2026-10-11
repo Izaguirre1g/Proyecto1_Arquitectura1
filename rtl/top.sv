@@ -28,7 +28,9 @@
      slot 3 = CRIPTO    (fsl, fsli, ell, vcr, camcon, setpwd)
 
  Banco de registros (rtl/regfile.sv): 8 lecturas (2 por slot) y 5 escrituras.
- Memoria de datos (rtl/memory.sv): 64 KB byte-addressable little-endian,
+ Memoria de instrucciones (rtl/instruction_memory.sv): IMEM_BUNDLES bundles
+     (16 KB); el programa se carga con +IMEM=<archivo.mem>.
+ Memoria de datos (rtl/memory.sv): DMEM_BYTES = 64 KB byte-addressable little-endian,
      de doble puerto: el puerto A es de la LSU y el puerto B de la unidad
      criptográfica (vcr y camcon).
 
@@ -48,16 +50,18 @@
      ningún camino hacia el banco de registros ni hacia la memoria.
 
  Excepción de privilegio:
-     Si una instrucción cripto se ejecuta sin permiso (fsl, fsli, ell o
-     camcon con AUTH = 0, o setpwd con INIT = 0), crypto_unit activa
-     crypto_fault en EX. Entonces:
+     decoder_crypto valida en ID cada instrucción cripto con el ESTADO actual
+     (fsl, fsli, ell y camcon necesitan AUTH = 1; setpwd necesita INIT = 1).
+     ESTADO se escribe en WB, como en el diagrama de organización del grupo.
+     Si la instrucción no tiene permiso, la marca viaja por ID/EX y en EX
+     crypto_unit activa crypto_fault. Entonces:
          - Se anula el bundle completo que está en EX: no escriben la ALU,
            la LSU, el BRU ni la cripto, y el salto del BRU no se toma.
          - Se descartan los 2 bundles que están en IF e ID, igual que en un
            salto tomado.
-         - El PC salta a TRAP_VECTOR, donde el programa debe tener su
-           manejador. Por defecto es el último bundle de la memoria de
-           instrucciones (0x1F0).
+         - El PC salta a TRAP_VECTOR (isa_defs.sv), donde el programa debe
+           tener su manejador: el último bundle de la memoria de
+           instrucciones (0x3FF0 con IMEM_BUNDLES = 1024).
          - trap_pc guarda el PC del bundle que causó la excepción y
            trap_count cuenta las excepciones (sólo para observación; el ISA
            no define cómo leerlos).
@@ -68,10 +72,7 @@
 `include "isa_defs.sv"
 
 
-module top #(
-
-    parameter logic [31:0] TRAP_VECTOR = 32'h0000_01F0   // manejador de excepciones
-) (
+module top(
 
     input  logic         clk,
     input  logic         reset,
@@ -89,11 +90,11 @@ module top #(
 
 // PC e instruction memory
 logic [31:0]  pc;
-logic [127:0] instruction_bundle;
+logic [BUNDLE_W-1:0] instruction_bundle;
 
 // FETCH → IF/ID
 logic [31:0]  fetch_pc;
-logic [127:0] fetch_bundle;
+logic [BUNDLE_W-1:0] fetch_bundle;
 logic         fetch_valid;
 logic         branch_flush;     // salto tomado en EX (BRU)
 logic         redirect;         // salto tomado o excepción: anula IF e ID y carga el PC
@@ -101,7 +102,7 @@ logic [31:0]  redirect_pc;      // destino del salto o TRAP_VECTOR
 
 // IF/ID → ID (dispatch)
 logic [31:0]  id_pc;
-logic [127:0] id_bundle;
+logic [BUNDLE_W-1:0] id_bundle;
 logic         id_valid;
 
 // ID (dispatch) → 4 slots
@@ -125,7 +126,6 @@ logic        lsu_valid;
 logic [3:0]  lsu_op;
 logic [4:0]  lsu_rd;
 logic [10:0] lsu_imm;
-logic        lsu_we;
 logic [4:0]  lsu_rs1, lsu_rs2;
 logic [31:0] lsu_rs1_data, lsu_rs2_data;
 
@@ -136,7 +136,6 @@ logic [10:0] bru_br_imm;
 logic [15:0] bru_jmp_imm;
 logic        bru_is_branch;
 logic        bru_is_jump;
-logic        bru_we;
 logic [4:0]  bru_rs1, bru_rs2;
 logic [31:0] bru_rs1_data, bru_rs2_data;
 
@@ -148,7 +147,7 @@ logic [1:0]  crypto_rk;
 logic [4:0]  crypto_rd;
 logic [15:0] crypto_addr;
 logic [4:0]  crypto_imm;
-logic        crypto_we;
+logic        crypto_fault_id;   // validación de privilegios en ID
 logic [4:0]  crypto_rs_a, crypto_rs_b;
 logic [31:0] crypto_rs_a_data, crypto_rs_b_data;
 
@@ -164,7 +163,6 @@ logic        ex_lsu_valid;
 logic [3:0]  ex_lsu_op;
 logic [4:0]  ex_lsu_rd;
 logic [10:0] ex_lsu_imm;
-logic        ex_lsu_we;
 logic [31:0] ex_lsu_operand_a;
 logic [31:0] ex_lsu_operand_b;
 logic [3:0]  ex_bru_op;
@@ -173,10 +171,10 @@ logic [10:0] ex_bru_br_imm;
 logic [15:0] ex_bru_jmp_imm;
 logic        ex_bru_is_branch;
 logic        ex_bru_is_jump;
-logic        ex_bru_we;
 logic [31:0] ex_bru_operand_a;
 logic [31:0] ex_bru_operand_b;
 logic        ex_crypto_valid;
+logic        ex_crypto_fault;
 logic [3:0]  ex_crypto_op;
 logic [1:0]  ex_crypto_lk;
 logic [1:0]  ex_crypto_rk;
@@ -252,11 +250,9 @@ pc_branch PC_BRANCH (
 // =============================================================================
 
 fetch FETCH (
-    .clk(clk),
     .reset(reset),
     .pc(pc),
     .instruction_bundle(instruction_bundle),
-    .flush_in(redirect),
     .pc_out(fetch_pc),
     .bundle_out(fetch_bundle),
     .valid_out(fetch_valid)
@@ -323,7 +319,7 @@ decoder_lsu DECODER_LSU (
     .rs1(lsu_rs1),
     .rs2(lsu_rs2),
     .imm(lsu_imm),
-    .we(lsu_we),
+    .we(),                      // no se usa: la LSU distingue cargas por lsu_op
     .valid(lsu_valid)
 );
 
@@ -342,7 +338,7 @@ decoder_bru DECODER_BRU (
     .jmp_imm(bru_jmp_imm),
     .is_branch(bru_is_branch),
     .is_jump(bru_is_jump),
-    .we(bru_we)
+    .we()                       // no se usa: el BRU escribe el enlace sólo en sye
 );
 
 
@@ -360,8 +356,13 @@ decoder_crypto DECODER_CRYPTO (
     .rs_b(crypto_rs_b),
     .addr(crypto_addr),
     .imm(crypto_imm),
-    .we(crypto_we),
-    .valid(crypto_valid)
+    .we(),                      // no se usa: la cripto escribe el par sólo en fsl/fsli
+    .valid(crypto_valid),
+
+    // Validación de privilegios con el ESTADO actual
+    .auth(crypto_estado[0]),
+    .init(crypto_estado[1]),
+    .priv_fault(crypto_fault_id)
 );
 
 
@@ -425,7 +426,6 @@ pipeline_id_ex ID_EX (
     .lsu_op(lsu_op),
     .lsu_rd(lsu_rd),
     .lsu_imm(lsu_imm),
-    .lsu_we(lsu_we),
     .lsu_operand_a(lsu_rs1_data),
     .lsu_operand_b(lsu_rs2_data),
 
@@ -436,12 +436,12 @@ pipeline_id_ex ID_EX (
     .bru_jmp_imm(bru_jmp_imm),
     .bru_is_branch(bru_is_branch),
     .bru_is_jump(bru_is_jump),
-    .bru_we(bru_we),
     .bru_operand_a(bru_rs1_data),
     .bru_operand_b(bru_rs2_data),
 
     // CRIPTO
     .crypto_valid(crypto_valid),
+    .crypto_fault(crypto_fault_id),
     .crypto_op(crypto_op),
     .crypto_lk(crypto_lk),
     .crypto_rk(crypto_rk),
@@ -467,7 +467,6 @@ pipeline_id_ex ID_EX (
     .lsu_op_out(ex_lsu_op),
     .lsu_rd_out(ex_lsu_rd),
     .lsu_imm_out(ex_lsu_imm),
-    .lsu_we_out(ex_lsu_we),
     .lsu_operand_a_out(ex_lsu_operand_a),
     .lsu_operand_b_out(ex_lsu_operand_b),
 
@@ -477,11 +476,11 @@ pipeline_id_ex ID_EX (
     .bru_jmp_imm_out(ex_bru_jmp_imm),
     .bru_is_branch_out(ex_bru_is_branch),
     .bru_is_jump_out(ex_bru_is_jump),
-    .bru_we_out(ex_bru_we),
     .bru_operand_a_out(ex_bru_operand_a),
     .bru_operand_b_out(ex_bru_operand_b),
 
     .crypto_valid_out(ex_crypto_valid),
+    .crypto_fault_out(ex_crypto_fault),
     .crypto_op_out(ex_crypto_op),
     .crypto_lk_out(ex_crypto_lk),
     .crypto_rk_out(ex_crypto_rk),
@@ -492,18 +491,6 @@ pipeline_id_ex ID_EX (
     .crypto_operand_b_out(ex_crypto_operand_b),
 
     .pc_out(ex_pc_from_id_ex),
-
-    // API vieja (alias): conectados a 0 para silenciar warnings
-    .rd(5'd0),
-    .operand_a(32'd0),
-    .operand_b(32'd0),
-    .imm(11'd0),
-    .use_imm(1'b0),
-    .rd_out(),
-    .operand_a_out(),
-    .operand_b_out(),
-    .imm_out(),
-    .use_imm_out(),
 
     .valid_out(id_ex_valid)
 );
@@ -548,7 +535,7 @@ lsu LSU (
     .wb_data(lsu_data_d)
 );
 
-memory #(.SIZE_WORDS(16384)) DMEM (
+memory #(.SIZE_WORDS(DMEM_BYTES / 4)) DMEM (
     .clk(clk),
     .we(mem_we),
     .be(mem_be),
@@ -603,6 +590,7 @@ crypto_unit CRYPTO (
     .clk(clk),
     .reset(reset),
     .valid_in(id_ex_valid && ex_crypto_valid),
+    .fault_in(ex_crypto_fault),
     .crypto_op(ex_crypto_op),
     .lk(ex_crypto_lk),
     .rk(ex_crypto_rk),
