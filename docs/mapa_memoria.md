@@ -5,9 +5,11 @@
 
 Este mapa aplica a los dos espacios direccionables del procesador:
 
-- **Memoria de instrucciones** (`rtl/instruction_memory.sv`) — tamaño **32 paquetes**
-  (128 instrucciones / 512 bytes) por defecto. Es modificable por parámetro.
-  La usa el módulo `fetch` para traer el bundle de 128 bits cada ciclo.
+- **Memoria de instrucciones** (`rtl/instruction_memory.sv`) — tamaño **1024 bundles**
+  (16 KB, `IMEM_BUNDLES` en `rtl/isa_defs.sv`). El programa se carga con
+  `+IMEM=programa.mem`. El último bundle (`0x3FF0`, `TRAP_VECTOR`) es el
+  manejador de excepciones. La usa el módulo `fetch` para traer el bundle de
+  128 bits cada ciclo.
 - **Memoria de datos** (`rtl/memory.sv`) — tamaño **64 KB** (16 384 palabras de
   32 bits, byte-addressable, little-endian). Es donde opera la LSU.
 
