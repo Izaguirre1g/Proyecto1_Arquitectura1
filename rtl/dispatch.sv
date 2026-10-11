@@ -15,15 +15,17 @@ Lo que hace:
  - Divide el bundle en cuatro instrucciones independientes.
  - Propaga la señal de validez hacia las siguientes etapas.
 */
+`include "isa_defs.sv"
+
 module dispatch(
 
-    input logic [127:0] bundle_in,
+    input logic [BUNDLE_W-1:0] bundle_in,
     input logic valid_in,
 
-    output logic [31:0] slot0_instr,
-    output logic [31:0] slot1_instr,
-    output logic [31:0] slot2_instr,
-    output logic [31:0] slot3_instr,
+    output logic [SLOT_W-1:0] slot0_instr,
+    output logic [SLOT_W-1:0] slot1_instr,
+    output logic [SLOT_W-1:0] slot2_instr,
+    output logic [SLOT_W-1:0] slot3_instr,
 
     output logic valid_out
 
@@ -33,13 +35,11 @@ module dispatch(
 //Es lógica combinacional, este bloque se ejecuta siempre que cualquier señal interna cambie, y no depende de un reloj
 always @(*) begin
 
-    slot0_instr = bundle_in[31:0];
-
-    slot1_instr = bundle_in[63:32];
-
-    slot2_instr = bundle_in[95:64];
-
-    slot3_instr = bundle_in[127:96];
+    // El slot k ocupa los bits [SLOT_W*k + SLOT_W-1 : SLOT_W*k] del bundle
+    slot0_instr = bundle_in[0*SLOT_W +: SLOT_W];      // [31:0]
+    slot1_instr = bundle_in[1*SLOT_W +: SLOT_W];      // [63:32]
+    slot2_instr = bundle_in[2*SLOT_W +: SLOT_W];      // [95:64]
+    slot3_instr = bundle_in[3*SLOT_W +: SLOT_W];      // [127:96]
 
 
     valid_out = valid_in;
