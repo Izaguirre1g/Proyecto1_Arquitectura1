@@ -335,6 +335,10 @@ Se eligió este diseño porque permite mantener las instrucciones en 32 bits y a
 
 ## Instrucciones tipo salto
 
+El tipo salto agrupa los saltos incondicionales con enlace. Tiene dos formatos: `sye` salta a una dirección relativa al PC y `syer` salta a la dirección que contiene un registro.
+
+Formato de `sye`:
+
 | [31:25] | [24:21] | [20:16] | [15:0] |
 |:---|:---|:---|:---|
 | **Tipo de operación** | **ID operación** | **Rg** | **offset** |
@@ -347,16 +351,34 @@ La distribución de los campos es la siguiente:
 - rg: 5 bits para identificar el registro donde se guarda la dirección de enlace.
 - offset: 16 bits con signo. Es un desplazamiento en bytes desde el PC del bundle que contiene `sye` y debe ser múltiplo de 16, porque cada bundle mide 16 bytes.
 
+Formato de `syer`:
+
+| [31:25] | [24:21] | [20:16] | [15:11] | [10:0] |
+|:---|:---|:---|:---|:---|
+| **Tipo de operación** | **ID operación** | **Rg** | **Rf1** | **offset** |
+| 7 bits | 4 bits | 5 bits | 5 bits | 11 bits |
+
+La distribución de los campos es la siguiente:
+
+- Tipo de operación: 7 bits.
+- ID operación: 4 bits para identificar la operación específica.
+- rg: 5 bits para identificar el registro donde se guarda la dirección de enlace.
+- rf1: 5 bits para identificar el registro que contiene la dirección base del salto.
+- offset: 11 bits con signo (−1024 a 1023), en bytes, que se suman a `rf1`.
+
 | Tipo de operación | ID operación | Instrucción | Operación |
 |:---:|:---:|:---:|:---:|
-| 1001011 | 0000 | `sye` | rg=PC+4; PC=PC + offset |
+| 1001011 | 0000 | `sye` | rg = PC + 16; PC = PC + offset |
+| 1001011 | 0001 | `syer` | rg = PC + 16; PC = (rf1 + offset), con los 4 bits menos significativos en 0 |
+
+Los IDs 0010 a 1111 del tipo salto quedan reservados.
 
 ### Explicación de las instrucciones
 
-`sye` guarda en `rg` la dirección de la siguiente instrucción (PC + 4) y posteriormente modifica el PC sumándole el offset.
+`sye` guarda en `rg` la dirección del bundle siguiente (PC + 16) y posteriormente modifica el PC sumándole el offset. PC es la dirección del bundle que contiene `sye`; como cada bundle mide 16 bytes, PC + 16 es el bundle que le sigue en memoria, que es donde debe continuar la ejecución al volver de una subrutina.
 
 ```
-rg = PC + 4
+rg = PC + 16
 PC = PC + offset
 ```
 
@@ -365,11 +387,32 @@ Ejemplo:
 Si `PC = 1024` y `offset = 64` (4 bundles hacia adelante):
 
 ```
-rg = 1024 + 4 = 1028
+rg = 1024 + 16 = 1040
 PC = 1024 + 64 = 1088
 ```
 
-Por lo tanto, la ejecución continúa en la dirección 1088, mientras que `rg` conserva la dirección de retorno 1028.
+Por lo tanto, la ejecución continúa en la dirección 1088, mientras que `rg` conserva la dirección de retorno 1040.
+
+Si `rg` es `x0`, el enlace se descarta y `sye` funciona como un salto incondicional simple (`sye x0, etiqueta`).
+
+`syer` guarda el enlace igual que `sye`, pero salta a la dirección que resulta de sumar el contenido de `rf1` y el offset. Los 4 bits menos significativos de esa suma se ponen en 0, de modo que el destino siempre es el inicio de un bundle.
+
+```
+rg = PC + 16
+PC = (rf1 + offset) AND 0xFFFFFFF0
+```
+
+Su uso principal es volver de una subrutina: `syer x0, ra, 0` salta a la dirección guardada en `ra` sin guardar un enlace nuevo (el ensamblador ofrece la pseudoinstrucción `ret` para esto). Ejemplo de llamada y retorno, mostrando sólo el slot BRU de cada bundle:
+
+```
+0x0040            sye  ra, funcion    # ra = 0x0050; PC = funcion
+0x0050            ...                 # al volver, la ejecución sigue aquí
+...
+funcion:          ...
+                  syer x0, ra, 0      # PC = ra = 0x0050
+```
+
+Los demás slots del bundle que contiene `sye` o `syer` se ejecutan normalmente. Una subrutina que a su vez llama a otra debe guardar `ra` (por ejemplo en la pila, con `sp`) antes de la llamada y recuperarlo antes de su propio retorno.
 
 #### Tamaño máximo del salto
 
@@ -388,11 +431,17 @@ Por lo tanto, como el offset está en bytes y debe ser múltiplo de 16, el salto
 - Máximo hacia atrás: −32768 bytes (2048 bundles)
 - Máximo hacia adelante: +32752 bytes (2047 bundles)
 
+En `syer` el destino no depende del PC: puede ser cualquier dirección que contenga `rf1`, más un offset de −1024 a +1023 bytes.
+
 ### Justificación de diseño
 
 Tanto el campo de tipo de operación como el ID de esta se mantienen en el mismo lugar y con la misma cantidad de bits para que haya coherencia en toda la encodificación de la arquitectura. Los 5 bits de rg permiten acceder a los 32 registros de uso general. El offset de 16 bits permite que el salto que se pueda dar sea lo más extenso posible.
 
-La estrategia frente a saltos que aplica a sye es la misma que rige para los saltos condicionales: vaciado de pipeline sin delay slots, con una penalización de 2 ciclos cuando el salto se toma. Se define y se justifica en la sección Instrucciones tipo control, apartado [Estrategia frente a saltos](#estrategia-frente-a-saltos).
+El enlace es PC + 16 y no PC + 4 porque el PC avanza de bundle en bundle: PC + 4 apuntaría al slot LSU del mismo bundle, que no es una dirección de bundle válida, y no serviría como dirección de retorno.
+
+`syer` se agregó porque sin ella la dirección que guarda `sye` no se podía usar: no había forma de saltar a la dirección contenida en un registro y, por lo tanto, no se podía volver de una subrutina llamada desde más de un lugar. Su formato conserva `rg` en [20:16], igual que `sye`, y ubica el offset de 11 bits en [10:0], igual que los tipos inmediato, almacenar y control. Poner en 0 los 4 bits bajos del destino garantiza que siempre se salte al inicio de un bundle sin necesidad de una excepción por desalineación.
+
+La estrategia frente a saltos que aplica a sye y syer es la misma que rige para los saltos condicionales: vaciado de pipeline sin delay slots, con una penalización de 2 ciclos cuando el salto se toma. Se define y se justifica en la sección Instrucciones tipo control, apartado [Estrategia frente a saltos](#estrategia-frente-a-saltos).
 
 ## Instrucciones tipo cripto
 
@@ -736,7 +785,7 @@ Se definieron cuatro operaciones de salto condicional: `igualsi`, `igualno`, `me
 
 **Política adoptada: vaciado de pipeline (flush) sin ranuras de retardo (delay slots).**
 
-Toda instrucción de salto de la arquitectura — los saltos condicionales igualsi, igualno, menora y mayoroigual, y el salto incondicional sye del tipo salto — se evalúa en la etapa EX del pipeline, que es donde la unidad BRU calcula la condición y la dirección destino. Cuando el salto se toma, los bundles que ya ingresaron al pipeline detrás de él, es decir los que en ese ciclo ocupan las etapas IF e ID (2 bundles en la organización de cuatro etapas presentada en la sección [Diagrama de organización de la arquitectura](#diagrama-de-organización-de-la-arquitectura)), se anulan: no escriben el banco de registros, ni la memoria, ni la bóveda de llaves, ni el registro ESTADO. El siguiente bundle que se ejecuta es el de la dirección destino.
+Toda instrucción de salto de la arquitectura — los saltos condicionales igualsi, igualno, menora y mayoroigual, y los saltos incondicionales sye y syer del tipo salto — se evalúa en la etapa EX del pipeline, que es donde la unidad BRU calcula la condición y la dirección destino. Cuando el salto se toma, los bundles que ya ingresaron al pipeline detrás de él, es decir los que en ese ciclo ocupan las etapas IF e ID (2 bundles en la organización de cuatro etapas presentada en la sección [Diagrama de organización de la arquitectura](#diagrama-de-organización-de-la-arquitectura)), se anulan: no escriben el banco de registros, ni la memoria, ni la bóveda de llaves, ni el registro ESTADO. El siguiente bundle que se ejecuta es el de la dirección destino.
 
 La arquitectura no define delay slots: el bundle inmediatamente posterior a un salto tomado nunca se ejecuta. Quien genera el código, sea el ensamblador propio o el compilador del grupo de contraparte, no debe rellenar ninguna ranura de retardo después de un salto ni insertar NOPs por causa de él.
 
@@ -1017,6 +1066,7 @@ Para los registros se asignaron campos de 5 bits debido a que permiten represent
 | `nop` | valor hexa: 0x00000000 |
 | `mov rg, rf1` | suma rg, rf1, x0 |
 | `not rg, rf1` | xori rg, rf1, -1 |
+| `ret` | syer x0, ra, 0 |
 
 Las resuelve el ensamblador
 
@@ -1027,7 +1077,7 @@ Las resuelve el ensamblador
 | Registro | Nombre ABI | Convención |
 |:---|:---|:---|
 | `x0` | cero | Constante 0. Las escrituras se descartan. |
-| `x1` | ra | Dirección de retorno (escrita por sye por convención). |
+| `x1` | ra | Dirección de retorno: por convención la escribe `sye` en las llamadas y la usa `ret` (`syer x0, ra, 0`). |
 | `x2` | sp | Puntero de pila (crece hacia abajo). |
 | `x3` | gp | Puntero global. |
 | `x4–x15` | t0–t11 | Temporales (no se preservan entre llamadas). |
@@ -1111,7 +1161,8 @@ Todas las instrucciones miden 32 bits: **Tipo de operación** [31:25] (7 bits) +
 
 | Mnemónico | Nombre | Descripción / ejemplo |
 |---|---|---|
-| `sye` | Saltar y enlazar | `rg = PC + 4; PC = PC + offset` (offset de 16 bits con signo, en bytes desde el PC del bundle y múltiplo de 16). Ej.: PC = 1024, offset = 64 → rg = 1028, PC = 1088. |
+| `sye` | Saltar y enlazar | `rg = PC + 16; PC = PC + offset` (offset de 16 bits con signo, en bytes desde el PC del bundle y múltiplo de 16). Ej.: PC = 1024, offset = 64 → rg = 1040, PC = 1088. |
+| `syer` | Saltar y enlazar con registro | `rg = PC + 16; PC = (rf1 + offset) AND 0xFFFFFFF0` (offset de 11 bits con signo, en bytes). Ej.: `syer x0, ra, 0` vuelve de una subrutina. |
 
 ## Instrucciones tipo control
 
@@ -1155,6 +1206,7 @@ Todas las instrucciones miden 32 bits: **Tipo de operación** [31:25] (7 bits) +
 | `nop` | No operación | Se codifica como `0x00000000`. |
 | `mov` | Mover | `mov rg, rf1` → `suma rg, rf1, x0`. |
 | `not` | Negación bit a bit | `not rg, rf1` → `xori rg, rf1, -1`. |
+| `ret` | Retornar | `ret` → `syer x0, ra, 0`. |
 
 ## Codificación por tipo
 
@@ -1162,19 +1214,19 @@ Todas las instrucciones miden 32 bits: **Tipo de operación** [31:25] (7 bits) +
 |---|---|---|---|
 | Almacenar | `1001001` | Tipo \| ID \| rf1 [20:16] \| rf2 / rg [15:11] \| offset [10:0] | guardap 0000, guardab 0001, cargai 1000, cargabai 1001 |
 | Inmediato | `1000000` | Tipo \| ID \| rf1 [20:16] \| rg [15:11] \| inm [10:0] | sumai 0000, restai 0001, cizqi 0010, cderi 0011, caderi 0100, xori 0101, andi 0110, ori 0111 |
-| Salto | `1001011` | Tipo \| ID \| rg [20:16] \| offset [15:0] | sye 0000 |
+| Salto | `1001011` | Tipo \| ID \| rg [20:16] \| offset [15:0] | sye 0000, syer 0001 (0010–1111 reservados) |
 | Control | `1000001` | Tipo \| ID \| rf1 [20:16] \| rf2 [15:11] \| inm [10:0] | igualsi 0001, igualno 0010, menora 0100, mayoroigual 1000 |
 | Registro | `1101010` | Tipo \| ID \| rg [20:16] \| rf1 [15:11] \| rf2 [10:6] | suma 1000, resta 1001, cizq 1011, cder 1111, cader 1010, xor 1110, and 1100, or 1101, mrq 0101, myq 0110 |
 | Cripto | `0000010` | Tipo \| ID \| LK [20:19] \| RK/off [18:17] \| rd [16:12] \| r1 [11:7] \| RSV [6:0] | fsl 0000, fsli 0001, ell 0010, vcr 0011, camcon 0100, setpwd 0101 (0110–1111 reservados) |
 
-`ell` usa: Tipo \| ID \| LK [20:19] \| off [18:17] \| rs1 [16:12] \| rs2 [11:7] \| RSV [6:0]. `vcr` usa: Tipo \| ID \| dir_cand [20:5] \| RSV [4:0]. `camcon` usa: Tipo \| ID \| dir [20:5] \| imm [4:0]. `setpwd` usa: Tipo \| ID \| RSV [20:5] \| rs [4:0].
+`ell` usa: Tipo \| ID \| LK [20:19] \| off [18:17] \| rs1 [16:12] \| rs2 [11:7] \| RSV [6:0]. `vcr` usa: Tipo \| ID \| dir_cand [20:5] \| RSV [4:0]. `camcon` usa: Tipo \| ID \| dir [20:5] \| imm [4:0]. `setpwd` usa: Tipo \| ID \| RSV [20:5] \| rs [4:0]. `syer` usa: Tipo \| ID \| rg [20:16] \| rf1 [15:11] \| offset [10:0].
 
 ## Registros
 
 | Registro | ABI | Uso |
 |---|---|---|
 | x0 | cero | Constante 0 |
-| x1 | ra | Dirección de retorno (`sye`) |
+| x1 | ra | Dirección de retorno (`sye`, `ret`) |
 | x2 | sp | Puntero de pila |
 | x3 | gp | Puntero global |
 | x4–x15 | t0–t11 | Temporales |
