@@ -17,14 +17,18 @@ rtl/                   módulos del procesador (SystemVerilog)
   instruction_memory.sv          — memoria de instrucciones (+IMEM=programa.mem)
   memory.sv, pc_branch.sv        — memoria de datos y PC
 tb/                    testbenches de make sim (uno por módulo + integración)
-tests/                 pruebas del ensamblador y testbenches que usan las herramientas
+tests/                 pruebas del ensamblador (Python) y testbenches que usan las herramientas (tests/rtl/)
 tools/                 scripts auxiliares
   assembler.py, run_program.py   — ensamblador y ejecución de programas
+  bundle_linear.py, run_ce1108.py — adaptador y prueba de la salida del compilador de CE1108
   load_file.py, extract_data.py — carga/descarga de memoria
 examples/              programas de ejemplo (.asm) y archivos de prueba
 docs/                  documentación
   simulation.md                  — flujo de simulación (del equipo)
+  assembler.md                   — sintaxis del ensamblador (Javier)
+  compiler-integration.md        — integración con el compilador de CE1108 (Javier)
   mapa_memoria.md                — mapa de memoria 64 KB (Alejandro)
+ISA_Proyecto.md        especificación del ISA
 ```
 
 ## Bloque LSU / BRU / Memoria (Alejandro)
@@ -50,7 +54,7 @@ Slots 1 y 2 del bundle + la memoria de datos están documentados en
 
 Los 5 testbenches asociados (`tb_lsu.sv`, `tb_bru.sv`,
 `tb_decoder_lsu.sv`, `tb_decoder_bru.sv`, `tb_memory.sv`) se ejecutan con
-`make sim`. Ver el resultado actual en `docs/compiler-integration.md`.
+`make sim` y son autoverificables (ver [docs/simulation.md](docs/simulation.md)).
 
 ## Herramientas de memoria (`tools/`)
 
@@ -66,16 +70,18 @@ Para la IMEM de bundles de 128 bits se usa `tools/assembler.py`.
 python3 tools/load_file.py datos.bin --base 0x0 --output build/datos.mem
 
 # Cargar datos pre-inicializados en el segmento de datos (gp = 0x4000)
-python tools/load_file.py datos.hex --base 0x4000 --output build/data.mem
+python3 tools/load_file.py datos.hex --base 0x4000 --output build/data.mem
 
-# Imagen completa de 64 KB con un byte por línea
-python tools/load_file.py imagen.bin --size 65536 --word-width 8
+# Imagen completa de 64 KB con un byte por línea (no sirve para memory.sv,
+# que lee palabras de 32 bits)
+python3 tools/load_file.py imagen.bin --size 65536 --word-width 8
 ```
 
-Luego, en Verilog:
+Luego, en el testbench (como hace `tests/rtl/tb_archivo.sv`; la ruta es relativa a
+la carpeta donde corre `vvp`):
 
 ```systemverilog
-initial $readmemh("build/datos.mem", DMEM.mem);
+initial $readmemh("datos.mem", DUT.DMEM.mem);
 ```
 
 ### `extract_data.py`
@@ -85,11 +91,11 @@ cifrado) en formato `.bin` o `.hex`.
 
 ```bash
 # 256 bytes a partir de 0x4000, en binario
-python tools/extract_data.py build/data.mem --base 0x4000 --size 256 \
+python3 tools/extract_data.py build/data.mem --base 0x4000 --size 256 \
        --format bin --output out.bin
 
 # Hex por stdout (default)
-python tools/extract_data.py build/data.mem --base 0x0 --size 16
+python3 tools/extract_data.py build/data.mem --base 0x0 --size 16
 ```
 
 ## Simulación
@@ -178,6 +184,8 @@ Deja logs, dumps y ondas en `build/program_<nombre>/`. Admite hasta
 en un bucle estable; `--cycles` fija el momento de comprobar el resultado.
 
 `examples/mixto.asm` incluye un bundle con ALU, LSU, BRU y cripto y usa las 6
-instrucciones cripto; `make test-programs` lo ejecuta. Los comandos para probar
+instrucciones cripto, y `examples/subrutina.asm` llama dos veces a una función
+con `sye` y vuelve con `syer`; `make test-programs` ejecuta estos y los demás
+ejemplos sobre el RTL. Los comandos para probar
 la salida real del generador CE1108 están en
 [docs/compiler-integration.md](docs/compiler-integration.md).
