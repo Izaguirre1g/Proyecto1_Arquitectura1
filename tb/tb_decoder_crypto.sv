@@ -18,6 +18,10 @@
    4. Campos en sus extremos: dirección 0xFFFF, rotación 31, LK = RK = 3.
    5. Slot inactivo: NOP, otros tipos de instrucción e IDs reservados
       (0110–1111) dejan valid = 0 y todas las salidas en 0.
+   6. Validación de privilegios en ID con el ESTADO actual: las 6
+      instrucciones con las 4 combinaciones de AUTH e INIT. fsl, fsli, ell y
+      camcon necesitan AUTH = 1, setpwd necesita INIT = 1 y vcr siempre pasa.
+      Un slot inactivo nunca marca excepción.
 
 ================================================================================
 */
@@ -42,6 +46,9 @@ logic [15:0] addr;
 logic [4:0]  imm;
 logic        we;
 logic        valid;
+logic        auth;
+logic        init;
+logic        priv_fault;
 
 
 decoder_crypto DUT (
@@ -55,7 +62,10 @@ decoder_crypto DUT (
     .addr(addr),
     .imm(imm),
     .we(we),
-    .valid(valid)
+    .valid(valid),
+    .auth(auth),
+    .init(init),
+    .priv_fault(priv_fault)
 );
 
 
@@ -78,6 +88,7 @@ task automatic expect_dec(input string name, input logic [31:0] instr,
     check({name, ": dir"},   addr, e_addr);
     check({name, ": imm"},   imm, e_imm);
     check({name, ": we"},    we, e_we);
+    check({name, ": sin excepción con AUTH = INIT = 1 (salvo setpwd)"}, priv_fault, 1'b0);
 endtask
 
 task automatic expect_nop(input string name, input logic [31:0] instr);
@@ -90,6 +101,10 @@ initial begin
 
     $dumpfile("tb_decoder_crypto.vcd");
     $dumpvars(0, tb_decoder_crypto);
+
+    // Secciones 1-5: con permiso para todo (setpwd sólo se revisa en la 6)
+    auth = 1'b1;
+    init = 1'b1;
 
 
     // ========================================================================
@@ -134,6 +149,48 @@ initial begin
     for (int id = 6; id < 16; id++)
         expect_nop($sformatf("ID reservado %b", id[3:0]),
                    {TYPE_CRYPTO, id[3:0], 2'd3, 2'd3, 5'd31, 5'd31, 7'h7F});
+
+
+    // ========================================================================
+    tb_section("6. Validación de privilegios");
+
+    begin
+        logic [31:0] instr [0:5];
+        string       name  [0:5];
+        logic        need_auth, need_init, e_fault;
+
+        instr[0] = 32'h04004200;  name[0] = "fsl";
+        instr[1] = 32'h043DEE00;  name[1] = "fsli";
+        instr[2] = 32'h04408500;  name[2] = "ell";
+        instr[3] = 32'h04602080;  name[3] = "vcr";
+        instr[4] = 32'h04840007;  name[4] = "camcon";
+        instr[5] = 32'h04A00006;  name[5] = "setpwd";
+
+        for (int i = 0; i < 6; i++) begin
+
+            need_auth = (i == 0 || i == 1 || i == 2 || i == 4);
+            need_init = (i == 5);
+
+            for (int st = 0; st < 4; st++) begin
+
+                auth = st[0];
+                init = st[1];
+                instruction = instr[i];
+                e_fault = (need_auth && !auth) || (need_init && !init);
+                #1;
+                check($sformatf("%s con AUTH=%0d INIT=%0d", name[i], auth, init), priv_fault, e_fault);
+            end
+        end
+
+        auth = 1'b0;
+        init = 1'b0;
+        instruction = 32'h0000_0000;
+        #1;
+        check("NOP con AUTH = INIT = 0: sin excepción", priv_fault, 1'b0);
+        instruction = {TYPE_CRYPTO, 4'b0110, 21'b0};
+        #1;
+        check("ID reservado con AUTH = INIT = 0: sin excepción", priv_fault, 1'b0);
+    end
 
 
     tb_finish("tb_decoder_crypto");
