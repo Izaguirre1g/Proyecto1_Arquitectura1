@@ -78,6 +78,7 @@ class Instruction:
     slot: int = 0
     target: int | None = None
     conditional: bool = False
+    indirect: bool = False  # syer: el destino sale de un registro
 
 
 @dataclass(frozen=True)
@@ -159,6 +160,12 @@ def encode_instruction(text: str, *, pc: int = 0,
             raise AssemblyError("nop no recibe operandos")
         return Instruction(0, (), (), text.strip())
 
+    if mnemonic == "ret":
+        if operands:
+            raise AssemblyError("ret no recibe operandos")
+        base = encode_instruction("syer x0, ra, 0")
+        return Instruction(base.word, base.reads, base.writes, text.strip(), base.slot, indirect=True)
+
     if mnemonic in {"csi", "csd"}:
         raise AssemblyError("csi/csd contradicen el aislamiento de la bóveda; falta resolver la ISA")
     if mnemonic == "camcom":
@@ -168,9 +175,9 @@ def encode_instruction(text: str, *, pc: int = 0,
         if len(operands) != n:
             raise AssemblyError(f"{mnemonic} requiere {n} operandos separados por comas")
 
-    def result(word, reads=(), writes=(), slot=0, target=None, conditional=False):
+    def result(word, reads=(), writes=(), slot=0, target=None, conditional=False, indirect=False):
         return Instruction(word, tuple(r for r in reads if r),
-                           tuple(r for r in writes if r), text.strip(), slot, target, conditional)
+                           tuple(r for r in writes if r), text.strip(), slot, target, conditional, indirect)
 
     if mnemonic in LSU_OPS:
         count(3)
@@ -180,6 +187,14 @@ def encode_instruction(text: str, *, pc: int = 0,
         base, data = (second, first) if load else (first, second)
         word = (0b1001001 << 25) | (LSU_OPS[mnemonic] << 21) | (base << 16) | (data << 11) | (imm & 2047)
         return result(word, (base,) if load else (base, data), (data,) if load else (), 1)
+
+    if mnemonic == "syer":
+        # rg = PC + 16; PC = (rf1 + offset) con los 4 bits bajos en 0.
+        count(3)
+        rd, rs1 = map(register, operands[:2])
+        offset = bounded(operands[2], -1024, 1023)
+        word = (0b1001011 << 25) | (1 << 21) | (rd << 16) | (rs1 << 11) | (offset & 2047)
+        return result(word, (rs1,), (rd,), 2, indirect=True)
 
     if mnemonic in BRU_OPS or mnemonic == "sye":
         jump = mnemonic == "sye"
@@ -310,9 +325,14 @@ def assemble_source(source: str) -> Program:
 
     # Se revisan ambos caminos de cada salto y también los ciclos del grafo.
     # No se aprovechan los ciclos de flush: es una planificación conservadora.
+    # syer no tiene sucesores: su destino no se conoce al ensamblar y, como
+    # todo salto tomado anula 2 bundles, lo que se ejecuta después ya ve sus
+    # escrituras y las de los bundles anteriores.
     def successors(index):
         branch = bundles[index].instructions[2]
         result = []
+        if branch.indirect:
+            return result
         if branch.target is not None:
             result.append(branch.target // 16)
         if (branch.target is None or branch.conditional) and index + 1 < len(bundles):
