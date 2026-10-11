@@ -1,7 +1,7 @@
 """Adaptación de la salida lineal del generador de CE1108."""
 from pathlib import Path
 import unittest
-from tools.assembler import AssemblyError, assemble_source, SPECS, LSU_OPS, BRU_OPS, CRYPTO_OPS
+from tools.assembler import AssemblyError, MAX_BUNDLES, assemble_source, SPECS, LSU_OPS, BRU_OPS, CRYPTO_OPS
 from tools.bundle_linear import bundle_linear
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -24,9 +24,11 @@ class BundlerTests(unittest.TestCase):
                 bundle_linear(source)
 
     def test_capacity(self):
-        self.assertEqual(len(assemble_source(bundle_linear('sumai x4,x0,1\n' * 11)).bundles), 31)
+        # n instrucciones ocupan 3n - 2 bundles (dos NOP entre cada una)
+        n = (MAX_BUNDLES + 2) // 3
+        self.assertEqual(len(assemble_source(bundle_linear('sumai x4,x0,1\n' * n)).bundles), 3 * n - 2)
         with self.assertRaises(AssemblyError):
-            bundle_linear('sumai x4,x0,1\n' * 12)
+            bundle_linear('sumai x4,x0,1\n' * (n + 1))
 
     def test_examples_cover_the_33_defined_instructions(self):
         used = set()
