@@ -35,6 +35,18 @@
  (0x00000000), otro tipo o un ID reservado (0110–1111) dejan valid = 0, y la
  unidad criptográfica no hace nada.
 
+ Validación de privilegios (diagrama de organización: ESTADO -> ID):
+     Con el ESTADO actual (auth = ESTADO[0], init = ESTADO[1]) se marca
+     priv_fault = 1 si la instrucción no tiene permiso:
+
+         fsl, fsli, ell, camcon   necesitan AUTH = 1
+         setpwd                   necesita  INIT = 1
+         vcr                      siempre permitida
+
+     priv_fault viaja por ID/EX; en EX la unidad criptográfica no ejecuta la
+     instrucción y top toma la excepción. ESTADO se escribe en WB, así que un
+     vcr o setpwd del bundle N se ve aquí desde el bundle N + 3.
+
  Este módulo es combinacional.
 
 ================================================================================
@@ -47,6 +59,10 @@ module decoder_crypto(
 
     input  logic [31:0] instruction,
 
+    // ESTADO actual (desde crypto_unit), para validar privilegios
+    input  logic        auth,          // ESTADO[0]
+    input  logic        init,          // ESTADO[1]
+
     // Salidas hacia ID/EX (cripto)
     output logic [3:0]  crypto_op,     // OP_FSL / OP_FSLI / OP_ELL / OP_VCR / OP_CAMCON / OP_SETPWD
     output logic [1:0]  lk,            // índice de llave en la bóveda (0–3)
@@ -57,7 +73,8 @@ module decoder_crypto(
     output logic [15:0] addr,          // dirección de memoria (vcr, camcon)
     output logic [4:0]  imm,           // rotación de camcon (0–31)
     output logic        we,            // 1 si la instrucción escribe registros (fsl, fsli)
-    output logic        valid          // 1 si el slot trae una instrucción cripto
+    output logic        valid,         // 1 si el slot trae una instrucción cripto
+    output logic        priv_fault     // 1 si la instrucción no tiene permiso
 );
 
 logic [6:0] instr_type;
@@ -149,5 +166,17 @@ always @(*) begin
         endcase
     end
 end
+
+
+// ============================================================================
+// Validación de privilegios con el ESTADO actual
+// ============================================================================
+
+logic needs_auth;
+
+assign needs_auth = (crypto_op == OP_FSL) || (crypto_op == OP_FSLI) ||
+                    (crypto_op == OP_ELL) || (crypto_op == OP_CAMCON);
+
+assign priv_fault = valid && ((needs_auth && !auth) || ((crypto_op == OP_SETPWD) && !init));
 
 endmodule
