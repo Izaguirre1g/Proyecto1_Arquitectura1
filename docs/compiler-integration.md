@@ -39,24 +39,21 @@ en `build/ce1108/`. Un resultado incorrecto termina con código distinto de cero
 
 ## Resultado y pendientes
 
-Revisión de Arquitectura `ba1b49e`, 8 de octubre de 2026:
+Estado en `fix-Pipeline-Integracion`, 11 de octubre de 2026:
 
-- Ensamblado y carga en IMEM: correctos. Ejecución CE1108: falla; r queda
-  en `0xdeadbeef` en vez de 10.
-- Las pruebas de programas ALU también fallan. `cpu_top.sv` mezcla el opcode
-  registrado en ID/EX con operandos e inmediato de ID; sus salidas de operandos
-  registrados están sin conectar. LSU y BRU también leen operandos de ID.
-- En LSU se retrasa el destino de una carga, pero el dato de WB sigue siendo
-  combinacional. Además, NOP decodifica op=0 y `valid_in` es el del bundle:
-  hay que distinguir el slot inactivo de `guardap`.
-- `make sim` informa 7 PASS, 2 FAIL y 10 SIN-CHEQUEO. Los fallos son
-  `tb_memory` y `tb_regfile_pipeline`; deben revisarse RTL y testbench,
-  sin asumir que ambos fallos provengan necesariamente del hardware.
-- Cripto no está conectada. `examples/mixto.asm` cubre sus seis instrucciones
-  y un bundle con las cuatro unidades; por ahora se valida su codificación.
+- `python3 tools/run_ce1108.py --input examples/ce1108.linear` termina con
+  `[PASS]`: r = 10. Los errores de integración que daban r = `0xdeadbeef` en la
+  revisión de `ba1b49e` (8 de octubre) están corregidos.
+- `make sim` da 21 PASS, 0 FAIL y 0 SIN-CHEQUEO, y `make test-programs` ejecuta
+  sobre el RTL los programas por unidad, `mixto.asm` (las cuatro unidades y las
+  seis instrucciones cripto) y `subrutina.asm` (llamada y retorno).
 
-Para cerrar la parte de Javier: acordar las diferencias de ISA descritas en
-[assembler.md](assembler.md), repetir los programas por unidad y el mixto
-cuando el procesador esté integrado, y ejecutar al menos un programa completo
-generado por CE1108. La corrección del pipeline se coordina con José/Fabricio,
-LSU/BRU con Alejandro y los formatos/autenticación cripto con Dylan.
+Pendiente:
+
+- Ejecutar al menos un programa completo generado por CE1108, con arranque y
+  estructuras de control. Para eso `bundle_linear.py` tiene que aceptar el
+  slot BRU: saltos condicionales, `sye` para llamar, `syer x0, ra, 0` (`ret`)
+  para volver.
+- Comunicar al grupo de CE1108 los cambios del ISA del 11 de octubre (enlace
+  PC + 16 en `sye`, `syer` y `ret`) y la regla de dependencias: el valor que
+  escribe el bundle N se lee desde el bundle N+3.
