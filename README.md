@@ -9,7 +9,7 @@ rtl/                   módulos del procesador (SystemVerilog)
   lsu.sv, decoder_lsu.sv         — Slot 1 (Alejandro)
   bru.sv, decoder_bru.sv         — Slot 2 (Alejandro)
   crypto_unit.sv (pendiente)    — Slot 3 (Dylan)
-  cpu_top.sv, fetch.sv,
+  top.sv, fetch.sv,
   pipeline_*.sv, wb.sv,
   regfile.sv, dispatch.sv        — compartidos
   instruction_memory.sv          — memoria de instrucciones
@@ -33,7 +33,7 @@ Slots 1 y 2 del bundle + la memoria de datos están documentados en
   registro interno para igualar la latencia de EX→WB con la ALU.
 - `rtl/bru.sv` — Branch Unit. Implementa `igualsi`, `igualno`,
   `menora`, `mayoroigual` (signed) y `sye` (jump-and-link con `rg = PC+4`).
-  Emite `branch_flush` y `target_pc` para que `cpu_top.sv` invalide IF/ID
+  Emite `branch_flush` y `target_pc` para que `top.sv` invalide IF/ID
   y actualice el PC.
 - `rtl/memory.sv` — Memoria de datos de 64 KB (16 384 palabras de 32
   bits). Byte-addressable, little-endian, lectura combinacional.
@@ -136,6 +136,6 @@ Un programa `.hex` que escribe `0xDEADBEEF` en la dirección `0x4000`:
 
 ```bash
 python tools/load_file.py build/prog.hex --base 0x0 --output build/prog.mem
-make sim TB=tb_cpu_top   # corre el programa
+make sim TB=tb_top   # corre el programa
 python tools/extract_data.py build/data.mem --base 0x4000 --size 4
 ```

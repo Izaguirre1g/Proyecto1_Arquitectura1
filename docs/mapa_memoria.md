@@ -125,4 +125,4 @@ python tools/load_file.py programa.hex --base 0x1000 --size 65536 \
 - El límite mínimo de tamaño es **64 KB** según el enunciado. El
   `memory.sv` lo respeta por default (`SIZE_WORDS = 16384`). Si se
   quiere reducir para acelerar la verificación, hay un parámetro
-  `SIZE_WORDS` que se puede sobreescribir desde `cpu_top`.
+  `SIZE_WORDS` que se puede sobreescribir desde `top`.

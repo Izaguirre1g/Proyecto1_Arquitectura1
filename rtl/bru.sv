@@ -23,14 +23,14 @@
  ------------------------------------------------------------------------------
  El pipeline es IF/ID/EX/WB, sin forwarding ni scoreboarding. Cuando un
  branch condicional se toma o se ejecuta un `sye`, el control del pipeline
- (rtl/cpu_top.sv) debe:
+ (rtl/top.sv) debe:
 
      1. Invalidar los dos bundles que están en IF e ID (2 ciclos de penalización)
      2. Cargar el PC con la dirección calculada por este módulo (target_pc)
      3. Si es `sye`, registrar el link (PC + 4) para escribirlo en WB
 
  Salidas:
-     branch_flush   1 si el branch se tomó o si es un jump (cpu_top lo usa
+     branch_flush   1 si el branch se tomó o si es un jump (top lo usa
                     para hacer flush de IF e ID y cargar el PC con target_pc)
      target_pc      dirección destino del salto (PC + offset firmado)
      link_we_d      1 si hay que escribir el link en el siguiente ciclo (sye)

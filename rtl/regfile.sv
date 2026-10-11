@@ -34,7 +34,7 @@
 
  El orden de los puertos de escritura coincide con las salidas del módulo wb.
  Un módulo puede instanciar menos puertos mediante los parámetros
- NUM_READ_PORTS y NUM_WRITE_PORTS. cpu_top lo instancia con la configuración
+ NUM_READ_PORTS y NUM_WRITE_PORTS. top lo instancia con la configuración
  completa.
 
  Temporización y dependencias de datos:

@@ -1,7 +1,7 @@
 `timescale 1ns/1ps
 
 
-module tb_cpu_top;
+module tb_top;
 
 
     logic clk;
@@ -18,7 +18,7 @@ module tb_cpu_top;
 
 
 
-    cpu_top DUT (
+    top DUT (
 
         .clk(clk),
 
@@ -58,8 +58,8 @@ module tb_cpu_top;
 
 initial begin
 
-    $dumpfile("cpu_top.vcd");
-    $dumpvars(0,tb_cpu_top);
+    $dumpfile("top.vcd");
+    $dumpvars(0,tb_top);
 
 
     clk = 0;

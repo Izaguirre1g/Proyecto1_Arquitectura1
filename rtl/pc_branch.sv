@@ -17,7 +17,7 @@
  bundle del ISA mide exactamente 128 bits = 16 bytes.
 
  Las señales branch_flush y target_pc provienen del módulo BRU
- (rtl/bru.sv). El control del pipeline (rtl/cpu_top.sv) las conecta a este
+ (rtl/bru.sv). El control del pipeline (rtl/top.sv) las conecta a este
  contador. Cuando branch_flush = 1, el control debe además invalidar los
  dos bundles que están en IF e ID (penalización de 2 ciclos).
 

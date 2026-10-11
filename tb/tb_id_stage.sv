@@ -28,7 +28,7 @@ module tb_id_stage;
 
 
 
-    // El banco de registros vive en cpu_top; aquí se instancia aparte con la
+    // El banco de registros vive en top; aquí se instancia aparte con la
     // configuración de 2 lecturas y 1 escritura (sólo el slot ALU).
 
     logic [4:0] rs1;
