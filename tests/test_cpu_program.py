@@ -7,7 +7,7 @@ import shutil
 import tempfile
 import unittest
 
-from tools.run_program import SimulationError, read_expected, run_program
+from tools.run_program import MAX_RUN_BUNDLES, SimulationError, read_expected, run_program
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -69,16 +69,23 @@ class CpuProgramTests(unittest.TestCase):
         self.execute(source, {1: 8, 31: 8})
 
     def test_last_bundle_reaches_writeback_at_capacity_limit(self):
-        source = "nop\n" * 27 + "sumai x31,x0,99 | nop | nop | nop\n"
+        source = "nop\n" * (MAX_RUN_BUNDLES - 1) + "sumai x31,x0,99 | nop | nop | nop\n"
         self.execute(source, {0: 0, 31: 99})
+
+    def test_mixed_program_with_crypto(self):
+        # examples/mixto.asm: las 4 unidades y las 6 instrucciones cripto
+        with tempfile.TemporaryDirectory() as directory:
+            run_program(ROOT / "examples/mixto.asm", Path(directory),
+                        {10: 7, 11: 0, 12: 1}, vcd=False,
+                        expected_memory={0x100: 14, 0x104: 42}, cycles=60)
 
     def test_incorrect_expected_result_is_an_error(self):
         with self.assertRaisesRegex(SimulationError, "resultados incorrectos"):
             self.execute("sumai x1,x0,7 | nop | nop | nop", {1: 8})
 
     def test_run_capacity_does_not_silently_drop_instructions(self):
-        with self.assertRaisesRegex(SimulationError, "28 bundles"):
-            self.execute("nop\n" * 29, {0: 0})
+        with self.assertRaisesRegex(SimulationError, f"{MAX_RUN_BUNDLES} bundles"):
+            self.execute("nop\n" * (MAX_RUN_BUNDLES + 1), {0: 0})
 
 
 class ExpectedDataTests(unittest.TestCase):
