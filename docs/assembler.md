@@ -77,27 +77,11 @@ de los saltos y los ciclos, sin descontar la penalización de flush; por eso
 puede pedir NOP adicionales en destinos de saltos. No inserta ni reordena código.
 La revisión cubre registros, no alias de memoria ni latencias de la bóveda.
 
-Los alias siguen la propuesta original: `ra=x1`, `sp=x2`, `gp=x3`,
-`t0..t11=x4..x15`, `s0..s15=x16..x31`. El mapa nuevo propone otra distribución:
-conviene usar registros numéricos hasta cerrar ese acuerdo.
+Los alias siguen el ABI de `ISA_Proyecto.md`: `ra=x1`, `sp=x2`, `gp=x3`,
+`t0..t11=x4..x15`, `s0..s15=x16..x31`.
 
-## Referencias y diferencias por resolver
+## Referencias
 
-Base del código: rama `feat-LSU-BRU-Mem`, commit `ba1b49e`.
-Formatos cripto: secciones detalladas de
-[ISA_Proyecto.md, commit eb9e5ee](https://github.com/Izaguirre1g/Proyecto1_Arquitectura1/blob/eb9e5eee2184ab6afb51b739d42ac1247cef4e7d/ISA_Proyecto.md).
-
-1. Las cargas usan tipo `1001001`, como `decoder_lsu.sv`. La tabla final de
-   la propuesta aún las lista bajo `1000000`.
-2. Cripto usa `setpwd` con ID `0101`, sin dirección, según su sección detallada.
-   La tabla final le asigna `0111` e incluye `csi/csd`, que contradicen la
-   prohibición de extraer llaves. `csi/csd` se rechazan con diagnóstico.
-3. `camcom` y `camcon` aparecen para el mismo ID `0100`; se acepta ambos nombres,
-   pero el equipo debe unificar también su descripción de acceso a la contraseña.
-4. `sye` conserva la codificación existente y guarda PC + 16 (el bundle
-   siguiente). `syer` (ID `0001` del tipo salto) se agregó al ISA el 11-oct
-   para volver de subrutinas.
-
-Se codifican 34 instrucciones de estas secciones, además de los pseudos.
-Hasta resolver esas contradicciones no se debe afirmar compatibilidad con
-el 100 % de la green sheet congelada ni ejecución cripto validada.
+La referencia es [ISA_Proyecto.md](../ISA_Proyecto.md) de este repositorio. 
+`make test-programs` ejecuta los ejemplos sobre el RTL, cripto incluida, y
+`make archivo` verifica el cifrado de un archivo contra la referencia.
