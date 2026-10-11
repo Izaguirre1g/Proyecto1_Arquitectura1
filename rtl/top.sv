@@ -1,6 +1,6 @@
 /*
 ================================================================================
- Módulo: cpu_top
+ Módulo: top
 
  Descripción:
  ------------------------------------------------------------------------------
@@ -11,10 +11,10 @@
           ── IF/ID ──
      ID:  dispatch + decoders de los slots + lectura del banco de registros
           ── ID/EX ──   (señales decodificadas y operandos leídos)
-     EX:  ALU, LSU + memoria de datos, BRU (no hay etapa MEM: el acceso a
-          memoria se hace dentro de EX)
-          ── EX/WB ──   (pipeline_ex_wb para la ALU; LSU y BRU registran
-                         su resultado internamente)
+     EX:  ALU, LSU + memoria de datos, BRU, CRIPTO (no hay etapa MEM: el
+          acceso a memoria se hace dentro de EX)
+          ── EX/WB ──   (pipeline_ex_wb para la ALU; LSU, BRU y CRIPTO
+                         registran su resultado internamente)
      WB:  wb → banco de registros
 
  Las unidades de EX toman todos sus operandos de ID/EX. Las lecturas del banco
@@ -25,11 +25,12 @@
                           instrucciones tipo registro y tipo inmediato)
      slot 1 = LSU       (guardap, guardab, cargai, cargabai)
      slot 2 = BRU       (igualsi, igualno, menora, mayoroigual, sye)
-     slot 3 = CRIPTO    (fsl, fsli, ell, vcr, camcon, setpwd — Dylan)
+     slot 3 = CRIPTO    (fsl, fsli, ell, vcr, camcon, setpwd)
 
  Banco de registros (rtl/regfile.sv): 8 lecturas (2 por slot) y 5 escrituras.
  Memoria de datos (rtl/memory.sv): 64 KB byte-addressable little-endian,
-                                  conectada directamente a la LSU.
+     de doble puerto: el puerto A es de la LSU y el puerto B de la unidad
+     criptográfica (vcr y camcon).
 
  Saltos:
      El BRU (en EX) produce branch_flush + target_pc. Esas señales se
@@ -41,13 +42,36 @@
      sin delay slots). Si el salto no se toma, 0 ciclos.
      Sin forwarding ni scoreboarding entre bundles (regla del proyecto).
 
+ Unidad criptográfica (rtl/crypto_unit.sv):
+     Contiene la bóveda de llaves (rtl/key_vault.sv) y el registro ESTADO
+     (AUTH, INIT). La bóveda sólo es accesible desde crypto_unit: no tiene
+     ningún camino hacia el banco de registros ni hacia la memoria.
+
+ Excepción de privilegio:
+     Si una instrucción cripto se ejecuta sin permiso (fsl, fsli, ell o
+     camcon con AUTH = 0, o setpwd con INIT = 0), crypto_unit activa
+     crypto_fault en EX. Entonces:
+         - Se anula el bundle completo que está en EX: no escriben la ALU,
+           la LSU, el BRU ni la cripto, y el salto del BRU no se toma.
+         - Se descartan los 2 bundles que están en IF e ID, igual que en un
+           salto tomado.
+         - El PC salta a TRAP_VECTOR, donde el programa debe tener su
+           manejador. Por defecto es el último bundle de la memoria de
+           instrucciones (0x1F0).
+         - trap_pc guarda el PC del bundle que causó la excepción y
+           trap_count cuenta las excepciones (sólo para observación; el ISA
+           no define cómo leerlos).
+
 ================================================================================
 */
 
 `include "isa_defs.sv"
 
 
-module cpu_top(
+module top #(
+
+    parameter logic [31:0] TRAP_VECTOR = 32'h0000_01F0   // manejador de excepciones
+) (
 
     input  logic         clk,
     input  logic         reset,
@@ -71,7 +95,9 @@ logic [127:0] instruction_bundle;
 logic [31:0]  fetch_pc;
 logic [127:0] fetch_bundle;
 logic         fetch_valid;
-logic         branch_flush;     // del BRU, sirve para fetch, IF/ID y pc_branch
+logic         branch_flush;     // salto tomado en EX (BRU)
+logic         redirect;         // salto tomado o excepción: anula IF e ID y carga el PC
+logic [31:0]  redirect_pc;      // destino del salto o TRAP_VECTOR
 
 // IF/ID → ID (dispatch)
 logic [31:0]  id_pc;
@@ -114,6 +140,18 @@ logic        bru_we;
 logic [4:0]  bru_rs1, bru_rs2;
 logic [31:0] bru_rs1_data, bru_rs2_data;
 
+// Decoders slot 3 (CRIPTO)
+logic        crypto_valid;
+logic [3:0]  crypto_op;
+logic [1:0]  crypto_lk;
+logic [1:0]  crypto_rk;
+logic [4:0]  crypto_rd;
+logic [15:0] crypto_addr;
+logic [4:0]  crypto_imm;
+logic        crypto_we;
+logic [4:0]  crypto_rs_a, crypto_rs_b;
+logic [31:0] crypto_rs_a_data, crypto_rs_b_data;
+
 // ID/EX
 logic        id_ex_valid;
 logic [3:0]  ex_alu_op;
@@ -138,6 +176,15 @@ logic        ex_bru_is_jump;
 logic        ex_bru_we;
 logic [31:0] ex_bru_operand_a;
 logic [31:0] ex_bru_operand_b;
+logic        ex_crypto_valid;
+logic [3:0]  ex_crypto_op;
+logic [1:0]  ex_crypto_lk;
+logic [1:0]  ex_crypto_rk;
+logic [4:0]  ex_crypto_rd;
+logic [15:0] ex_crypto_addr;
+logic [4:0]  ex_crypto_imm;
+logic [31:0] ex_crypto_operand_a;
+logic [31:0] ex_crypto_operand_b;
 
 // EX - ALU
 logic [31:0] ex_operand_a;
@@ -163,6 +210,18 @@ logic        bru_link_we_d;
 logic [4:0]  bru_link_rd_d;
 logic [31:0] bru_link_value_d;
 
+// EX - CRIPTO
+logic        crypto_fault;      // excepción de privilegio en EX
+logic [31:0] crypto_estado;     // ESTADO (sólo observación)
+logic        crypto_mem_we;
+logic [31:0] crypto_mem_addr;
+logic [31:0] crypto_mem_wdata;
+logic [31:0] crypto_mem_rdata;
+logic        crypto_we_d;
+logic [4:0]  crypto_rd_d;
+logic [31:0] crypto_data_l_d;
+logic [31:0] crypto_data_r_d;
+
 // EX/WB → WB
 logic [4:0]       wb_we;
 logic [4:0][4:0]  wb_waddr;
@@ -182,8 +241,8 @@ instruction_memory IMEM(
 pc_branch PC_BRANCH (
     .clk(clk),
     .reset(reset),
-    .branch_flush(branch_flush),
-    .target_pc(bru_target_pc),
+    .branch_flush(redirect),
+    .target_pc(redirect_pc),
     .pc_out(pc)
 );
 
@@ -197,7 +256,7 @@ fetch FETCH (
     .reset(reset),
     .pc(pc),
     .instruction_bundle(instruction_bundle),
-    .flush_in(branch_flush),
+    .flush_in(redirect),
     .pc_out(fetch_pc),
     .bundle_out(fetch_bundle),
     .valid_out(fetch_valid)
@@ -214,7 +273,7 @@ pipeline_if_id IF_ID (
     .pc_in(fetch_pc),
     .bundle_in(fetch_bundle),
     .valid_in(fetch_valid),
-    .flush_in(branch_flush),
+    .flush_in(redirect),
     .pc_out(id_pc),
     .bundle_out(id_bundle),
     .valid_out(id_valid)
@@ -288,18 +347,37 @@ decoder_bru DECODER_BRU (
 
 
 // =============================================================================
+// ID: decoder_crypto (slot 3)
+// =============================================================================
+
+decoder_crypto DECODER_CRYPTO (
+    .instruction(slot3_instr),
+    .crypto_op(crypto_op),
+    .lk(crypto_lk),
+    .rk(crypto_rk),
+    .rd(crypto_rd),
+    .rs_a(crypto_rs_a),
+    .rs_b(crypto_rs_b),
+    .addr(crypto_addr),
+    .imm(crypto_imm),
+    .we(crypto_we),
+    .valid(crypto_valid)
+);
+
+
+// =============================================================================
 // Banco de registros (8 lecturas × 5 escrituras, compartido entre slots)
 //
 //   Lectura   0, 1   slot 0 ALU     rf1, rf2
 //             2, 3   slot 1 LSU     rf1 (base), rf2 (dato de store)
 //             4, 5   slot 2 BRU     rf1, rf2 de las comparaciones
-//             6, 7   slot 3 CRIPTO  (Dylan)
+//             6, 7   slot 3 CRIPTO  par (r1, r1+1) de fsl/fsli, (rs1, rs2) de ell, rs de setpwd
 //
 //   Escritura 0..4  slot 0..4 lógica     (ver wb.sv)
 // =============================================================================
 
 assign reg_raddr = {
-    5'd0, 5'd0,            // slot 3 CRIPTO (pendiente Dylan)
+    crypto_rs_b, crypto_rs_a,  // slot 3 CRIPTO
     bru_rs2, bru_rs1,      // slot 2 BRU
     lsu_rs2, lsu_rs1,      // slot 1 LSU
     alu_rs2, alu_rs1       // slot 0 ALU
@@ -311,6 +389,8 @@ assign lsu_rs1_data = reg_rdata[2];
 assign lsu_rs2_data = reg_rdata[3];
 assign bru_rs1_data = reg_rdata[4];
 assign bru_rs2_data = reg_rdata[5];
+assign crypto_rs_a_data = reg_rdata[6];
+assign crypto_rs_b_data = reg_rdata[7];
 
 regfile REGFILE (
     .clk(clk),
@@ -330,7 +410,7 @@ regfile REGFILE (
 pipeline_id_ex ID_EX (
     .clk(clk),
     .reset(reset),
-    .flush(branch_flush),          // salto tomado en EX: anula el bundle de ID
+    .flush(redirect),              // salto tomado o excepción en EX: anula el bundle de ID
 
     // ALU
     .alu_op(alu_op),
@@ -359,6 +439,17 @@ pipeline_id_ex ID_EX (
     .bru_we(bru_we),
     .bru_operand_a(bru_rs1_data),
     .bru_operand_b(bru_rs2_data),
+
+    // CRIPTO
+    .crypto_valid(crypto_valid),
+    .crypto_op(crypto_op),
+    .crypto_lk(crypto_lk),
+    .crypto_rk(crypto_rk),
+    .crypto_rd(crypto_rd),
+    .crypto_addr(crypto_addr),
+    .crypto_imm(crypto_imm),
+    .crypto_operand_a(crypto_rs_a_data),
+    .crypto_operand_b(crypto_rs_b_data),
 
     .pc_in(id_pc),
 
@@ -389,6 +480,16 @@ pipeline_id_ex ID_EX (
     .bru_we_out(ex_bru_we),
     .bru_operand_a_out(ex_bru_operand_a),
     .bru_operand_b_out(ex_bru_operand_b),
+
+    .crypto_valid_out(ex_crypto_valid),
+    .crypto_op_out(ex_crypto_op),
+    .crypto_lk_out(ex_crypto_lk),
+    .crypto_rk_out(ex_crypto_rk),
+    .crypto_rd_out(ex_crypto_rd),
+    .crypto_addr_out(ex_crypto_addr),
+    .crypto_imm_out(ex_crypto_imm),
+    .crypto_operand_a_out(ex_crypto_operand_a),
+    .crypto_operand_b_out(ex_crypto_operand_b),
 
     .pc_out(ex_pc_from_id_ex),
 
@@ -431,7 +532,7 @@ alu ALU (
 lsu LSU (
     .clk(clk),
     .reset(reset),
-    .valid_in(id_ex_valid && ex_lsu_valid),   // sólo si el slot 1 trae una instrucción LSU
+    .valid_in(id_ex_valid && ex_lsu_valid && !crypto_fault),   // sólo si el slot 1 trae una instrucción LSU
     .lsu_op(ex_lsu_op),
     .rd(ex_lsu_rd),
     .imm(ex_lsu_imm),
@@ -453,7 +554,13 @@ memory #(.SIZE_WORDS(16384)) DMEM (
     .be(mem_be),
     .addr(mem_addr),
     .wdata(mem_wdata),
-    .rdata(mem_rdata)
+    .rdata(mem_rdata),
+
+    // Puerto B: unidad criptográfica (vcr, camcon)
+    .we_b(crypto_mem_we),
+    .addr_b(crypto_mem_addr),
+    .wdata_b(crypto_mem_wdata),
+    .rdata_b(crypto_mem_rdata)
 );
 
 
@@ -473,8 +580,8 @@ bru BRU (
     .rf2_data(ex_bru_operand_b),
     .pc_current(ex_pc),
     .bru_op(ex_bru_op),
-    .is_branch(ex_bru_is_branch),
-    .is_jump(ex_bru_is_jump),
+    .is_branch(ex_bru_is_branch && !crypto_fault),   // una excepción anula el salto
+    .is_jump(ex_bru_is_jump && !crypto_fault),
     .br_imm(ex_bru_br_imm),
     .jmp_imm(ex_bru_jmp_imm),
     .link_rd_in(ex_bru_rd),
@@ -485,13 +592,71 @@ bru BRU (
     .link_value_d(bru_link_value_d)
 );
 
-// Branch flush al fetch, IF/ID y PC
 assign branch_flush = bru_branch_flush;
 
 
 // =============================================================================
-// EX / WB (solo ALU por ahora; LSU y BRU escriben directo desde sus
-// registros internos para igualar la latencia).
+// EX - CRIPTO (slot 3)
+// =============================================================================
+
+crypto_unit CRYPTO (
+    .clk(clk),
+    .reset(reset),
+    .valid_in(id_ex_valid && ex_crypto_valid),
+    .crypto_op(ex_crypto_op),
+    .lk(ex_crypto_lk),
+    .rk(ex_crypto_rk),
+    .rd(ex_crypto_rd),
+    .operand_a(ex_crypto_operand_a),
+    .operand_b(ex_crypto_operand_b),
+    .addr(ex_crypto_addr),
+    .imm(ex_crypto_imm),
+    .mem_we(crypto_mem_we),
+    .mem_addr(crypto_mem_addr),
+    .mem_wdata(crypto_mem_wdata),
+    .mem_rdata(crypto_mem_rdata),
+    .wb_we(crypto_we_d),
+    .wb_rd(crypto_rd_d),
+    .wb_data_l(crypto_data_l_d),
+    .wb_data_r(crypto_data_r_d),
+    .priv_fault(crypto_fault),
+    .estado(crypto_estado)
+);
+
+
+// =============================================================================
+// Cambio de flujo: salto tomado o excepción de privilegio
+//
+// Los dos anulan los bundles que están en IF e ID y cargan el PC. Si en el
+// mismo bundle hay un salto y una excepción, gana la excepción (el BRU ya
+// recibe is_branch/is_jump anulados).
+// =============================================================================
+
+assign redirect    = branch_flush || crypto_fault;
+assign redirect_pc = crypto_fault ? TRAP_VECTOR : bru_target_pc;
+
+// Registro de la última excepción (sólo para observación en simulación)
+logic [31:0] trap_pc;
+logic [31:0] trap_count;
+
+always @(posedge clk) begin
+
+    if (reset) begin
+
+        trap_pc    <= 32'b0;
+        trap_count <= 32'b0;
+    end
+    else if (crypto_fault) begin
+
+        trap_pc    <= ex_pc;
+        trap_count <= trap_count + 1;
+    end
+end
+
+
+// =============================================================================
+// EX / WB (sólo la ALU pasa por pipeline_ex_wb; LSU, BRU y CRIPTO escriben
+// directo desde sus registros internos para igualar la latencia).
 // =============================================================================
 
 // ALU pasa por pipeline_ex_wb (igual que en el código del equipo)
@@ -504,7 +669,7 @@ pipeline_ex_wb EX_WB (
     .reset(reset),
     .result_in(alu_result),
     .rd_in(ex_alu_rd),
-    .valid_in(id_ex_valid),
+    .valid_in(id_ex_valid && !crypto_fault),     // una excepción anula el bundle
     .result_out(ex_wb_alu_result),
     .rd_out(ex_wb_rd),
     .valid_out(ex_wb_valid)
@@ -528,10 +693,10 @@ wb WB (
     .bru_rd(bru_link_rd_d),
     .bru_data(bru_link_value_d),
 
-    .crypto_we(1'b0),
-    .crypto_rd(5'd0),
-    .crypto_data_l(32'd0),
-    .crypto_data_r(32'd0),
+    .crypto_we(crypto_we_d),
+    .crypto_rd(crypto_rd_d),
+    .crypto_data_l(crypto_data_l_d),
+    .crypto_data_r(crypto_data_r_d),
 
     .we(wb_we),
     .waddr(wb_waddr),
