@@ -7,6 +7,7 @@
  Definiciones constantes del ISA del procesador VLIW.
 
  Contiene:
+ - Parámetros de la organización (bundle, slots, memorias, excepción).
  - Tipos de instrucción.
  - Identificadores de operación.
  - Códigos internos usados por la ALU.
@@ -17,6 +18,22 @@
 */
 `ifndef ISA_DEFS_SV
 `define ISA_DEFS_SV
+// ============================================================================
+// Parámetros de la organización
+// ============================================================================
+
+localparam int NUM_SLOTS    = 4;                     // slots por bundle: ALU, LSU, BRU, CRIPTO
+localparam int SLOT_W       = 32;                    // bits por slot (una instrucción)
+localparam int BUNDLE_W     = NUM_SLOTS * SLOT_W;    // 128 bits por bundle
+localparam int BUNDLE_BYTES = BUNDLE_W / 8;          // 16: lo que avanza el PC por bundle
+
+localparam int IMEM_BUNDLES = 1024;                  // memoria de instrucciones: 16 KB
+localparam int DMEM_BYTES   = 65536;                 // memoria de datos: 64 KB
+
+// Manejador de excepciones: último bundle de la memoria de instrucciones
+localparam logic [31:0] TRAP_VECTOR = (IMEM_BUNDLES - 1) * BUNDLE_BYTES;
+
+
 // ============================================================================
 // Tipos de instrucción [31:25]
 // ============================================================================
