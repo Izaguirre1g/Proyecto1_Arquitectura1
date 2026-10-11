@@ -230,7 +230,7 @@ Asignación de puertos en la configuración completa:
 |:---|:---|:---|
 | 0 | 0 ALU | tipo registro y tipo inmediato |
 | 1 | 1 LSU | `cargai`, `cargabai` |
-| 2 | 2 BRU | `sye` (dirección de retorno) |
+| 2 | 2 BRU | `sye` y `syer` (dirección de retorno) |
 | 3 | 3 CRIPTO | `fsl`/`fsli`: `L_out` hacia `rd` |
 | 4 | 3 CRIPTO | `fsl`/`fsli`: `R_out` hacia `rd+1` |
 
@@ -379,8 +379,8 @@ resultados.
 `camcon` necesitan AUTH = 1 y `setpwd` necesita INIT = 1. Si no tiene permiso, la marca viaja por
 ID/EX y en EX `crypto_unit` activa `priv_fault` y no ejecuta la instrucción. `top` además:
 
-- anula el bundle completo: la ALU, la LSU, el BRU (un salto no se toma y `sye` no escribe su
-  enlace) y la cripto;
+- anula el bundle completo: la ALU, la LSU, el BRU (un salto no se toma y `sye` o `syer` no
+  escriben su enlace) y la cripto;
 - anula los 2 bundles que están en IF e ID, igual que un salto tomado;
 - carga el PC con `TRAP_VECTOR` (`0x3FF0`, el último bundle de la memoria de instrucciones). Ahí
   el programa debe tener su manejador;
@@ -422,7 +422,7 @@ Testbenches autoverificables:
 | `tb_regfile` | Reset, escritura y lectura de los 31 registros por todos los puertos, x0, `we = 0`, ausencia de bypass, 5 escrituras y 8 lecturas simultáneas, conflictos de escritura, reset en medio de la ejecución, 2000 ciclos aleatorios contra un modelo y la configuración de 2 lecturas y 1 escritura. |
 | `tb_wb` | Cada unidad sola, `we = 0`, destino x0, bordes del par de la cripto, bundle completo con 5 escrituras, detección de conflictos, 2000 combinaciones aleatorias contra un modelo y `wb` conectado al banco. |
 | `tb_regfile_pipeline` | Regla de dependencias sobre `top`: lectura a distancias 1, 2, 3 y 4 del productor, inmediato negativo, escritura a x0 y ausencia de conflictos. |
-| `tb_pipeline_integracion` | Programas sobre `top` con los slots ALU, LSU y BRU. A: `guardap`, `guardab`, `cargai` y `cargabai` seguidos, y un NOP en el slot LSU no escribe la memoria (su `lsu_op` es 0, igual que `guardap`). B: un salto no tomado no cuesta ciclos; uno tomado (`igualno`, `sye`, `mayoroigual`) anula exactamente los 2 bundles siguientes y el destino entra a EX 3 ciclos después del salto (penalización de 2 ciclos, sin delay slots); `sye` escribe PC + 4. C: ALU, LSU y BRU en el mismo bundle, y 3 escrituras al banco en el mismo ciclo. D: bucle con salto hacia atrás. Se comprobó que falla si se reintroduce cualquiera de los errores de integración corregidos. |
+| `tb_pipeline_integracion` | Programas sobre `top` con los slots ALU, LSU y BRU. A: `guardap`, `guardab`, `cargai` y `cargabai` seguidos, y un NOP en el slot LSU no escribe la memoria (su `lsu_op` es 0, igual que `guardap`). B: un salto no tomado no cuesta ciclos; uno tomado (`igualno`, `sye`, `mayoroigual`) anula exactamente los 2 bundles siguientes y el destino entra a EX 3 ciclos después del salto (penalización de 2 ciclos, sin delay slots); `sye` escribe PC + 16. C: ALU, LSU y BRU en el mismo bundle, y 3 escrituras al banco en el mismo ciclo. D: bucle con salto hacia atrás. E: una función llamada dos veces con `sye` que vuelve con `syer x0, ra, 0` al bundle siguiente al de cada llamada, y `syer` con enlace y offset (destino alineado a 16). Se comprobó que falla si se reintroduce cualquiera de los errores de integración corregidos. |
 | `tb_key_vault` | Reset en cero, 4 llaves cargadas con pares de palabras y leídas por las 16 subllaves, `key_we = 0`, `setpwd`, que no autentique antes de `setpwd` (ni con candidata 0), rotación de la contraseña con 0, 1, 7 y 31, `off` impar, 1000 escrituras aleatorias contra un modelo y reset en medio de la ejecución. |
 | `tb_decoder_crypto` | Las 6 instrucciones con codificaciones generadas por el ensamblador del grupo (los campos coinciden con `tools/assembler.py`), lecturas del banco por instrucción, `we`, campos en sus extremos, slot inactivo (NOP, otros tipos e IDs reservados) y la validación de privilegios de las 6 instrucciones con las 4 combinaciones de AUTH e INIT. |
 | `tb_crypto_unit` | La unidad con su bóveda y el puerto B de la memoria: excepción de cada instrucción privilegiada sin permiso y sin efectos, `setpwd` repetido, `vcr` correcta e incorrecta, carga de las 4 llaves, el vector conocido HOLA2026 → `03D44466 D685AFAF` ronda por ronda, cifrado y descifrado completos con cada llave, 500 rondas aleatorias de `fsl` y `fsli` contra la referencia, `camcon`, `valid_in = 0`, reset en medio de la ejecución y que ESTADO cambie en el flanco de WB y no en el de EX. La validación de ID se modela en el testbench. |

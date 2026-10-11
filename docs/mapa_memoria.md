@@ -35,7 +35,7 @@ instrucciones sea de 128 bits por bundle.
 | Registro | Uso                                       | Notas                              |
 |----------|-------------------------------------------|------------------------------------|
 | `x0`     | Cero cableado                             | Cualquier escritura se ignora.     |
-| `x1`     | `ra` — link register (`sye`)             | También libre si no hay saltos.    |
+| `x1`     | `ra` — link register (`sye`, `ret`)      | También libre si no hay saltos.    |
 | `x2`     | `sp` — stack pointer                    | Crece hacia abajo.                 |
 | `x3`     | `gp` — global pointer (`= 0x4000`)      | Base para direccionamiento.        |
 | `x4..x7` | Temporales                               |                                    |
@@ -73,9 +73,11 @@ el dato escrito lo puede leer el bundle N+3.
   evalúan en **EX** y, cuando se toman, invalidan los dos bundles que
   están en **IF** e **ID**. Penalización: 2 ciclos (no hay delay slot).
 - El jump `sye` siempre flushea IF e ID y carga el PC con el offset
-  firmado de 16 bits.
-- Sin forwarding: el `rg = PC + 4` de `sye` se escribe en WB junto con
-  el bundle siguiente a la instrucción.
+  firmado de 16 bits. `syer` hace lo mismo, pero el PC pasa a ser
+  `rf1 + offset` con los 4 bits bajos en 0 (`syer x0, ra, 0` = `ret`).
+- Sin forwarding: el enlace `rg = PC + 16` de `sye` y `syer` se escribe en
+  WB; el bundle destino ya puede leerlo, porque los 2 bundles anulados
+  cubren esa latencia.
 
 Más detalles en [`docs/interfaces.md`](./interfaces.md) (cuando esté
 disponible) y en el comentario de `rtl/bru.sv`.

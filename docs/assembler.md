@@ -40,11 +40,14 @@ no se debe usar su salida de 32 bits directamente como bundles de IMEM.
 - Almacenamientos: `guardap base, dato, offset` y `guardab base, dato, offset`.
   Offset de memoria: −1024 a 1023, en bytes.
 - Control: `igualsi fuente1, fuente2, destino`, `igualno`, `menora`,
-  `mayoroigual`; `sye registro_enlace, destino`.
+  `mayoroigual`; `sye registro_enlace, destino`; `syer registro_enlace, base, offset`
+  salta a `base + offset` (offset de −1024 a 1023 bytes; el hardware pone en 0 los
+  4 bits bajos del destino). Ambos guardan PC + 16, el bundle siguiente.
 - Cripto: `fsl rd, r1, LK, RK`, `fsli rd, r1, LK, RK`,
   `ell LK, off, rs1, rs2`, `vcr dirección`, `camcon dirección, rotación`,
   `setpwd registro`. `camcom` se admite como alias de `camcon`.
-- Pseudoinstrucciones: `mov rd, rs`, `not rd, rs`, `nop`.
+- Pseudoinstrucciones: `mov rd, rs`, `not rd, rs`, `nop` y `ret`
+  (`syer x0, ra, 0`, vuelve de una subrutina).
 
 En cripto también se admiten los campos nombrados de la especificación,
 por ejemplo `fsl rd=6, r1=2, LK=0, RK=1`. Los pares de Feistel empiezan en un
@@ -63,6 +66,9 @@ nop | nop | igualno x4,x5,inicio | nop
 El destino puede ser etiqueta o desplazamiento con signo **en bytes desde
 el PC del bundle del salto**. Debe caer en un bundle del programa. Los saltos
 condicionales usan 11 bits; `sye`, 16 bits. Se exige alineación de 16 bytes.
+`syer` no usa etiquetas: su destino sale de un registro. Para el chequeo de
+dependencias no tiene sucesor, porque después de un salto tomado los 2 bundles
+anulados ya cubren la latencia del banco de registros.
 
 El ensamblador rechaza slots incorrectos, dos escrituras al mismo registro y
 lecturas de resultados producidos en otro slot del mismo bundle. Entre un
@@ -88,9 +94,10 @@ Formatos cripto: secciones detalladas de
    prohibición de extraer llaves. `csi/csd` se rechazan con diagnóstico.
 3. `camcom` y `camcon` aparecen para el mismo ID `0100`; se acepta ambos nombres,
    pero el equipo debe unificar también su descripción de acceso a la contraseña.
-4. `sye` conserva la codificación existente. El RTL guarda PC+4 aunque los
-   bundles avanzan 16 bytes; falta confirmar la dirección de enlace.
+4. `sye` conserva la codificación existente y guarda PC + 16 (el bundle
+   siguiente). `syer` (ID `0001` del tipo salto) se agregó al ISA el 11-oct
+   para volver de subrutinas.
 
-Se codifican 33 instrucciones de estas secciones, además de los pseudos.
+Se codifican 34 instrucciones de estas secciones, además de los pseudos.
 Hasta resolver esas contradicciones no se debe afirmar compatibilidad con
 el 100 % de la green sheet congelada ni ejecución cripto validada.

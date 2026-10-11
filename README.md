@@ -37,7 +37,8 @@ Slots 1 y 2 del bundle + la memoria de datos están documentados en
   con desplazamiento del byte y load con sign-extension. Incluye un
   registro interno para igualar la latencia de EX→WB con la ALU.
 - `rtl/bru.sv` — Branch Unit. Implementa `igualsi`, `igualno`,
-  `menora`, `mayoroigual` (signed) y `sye` (jump-and-link con `rg = PC+4`).
+  `menora`, `mayoroigual` (signed), `sye` (jump-and-link con `rg = PC + 16`)
+  y `syer` (salta a la dirección de un registro; `syer x0, ra, 0` vuelve de una subrutina).
   Emite `branch_flush` y `target_pc` para que `top.sv` invalide IF/ID
   y actualice el PC.
 - `rtl/memory.sv` — Memoria de datos de 64 KB (16 384 palabras de 32
@@ -161,6 +162,8 @@ python3 tools/run_program.py --input examples/lsu_isa.asm \
   --expect examples/lsu_isa.expected.json --expect-memory examples/lsu_isa.memory.json --cycles 80
 python3 tools/run_program.py --input examples/bru_isa.asm \
   --expect examples/bru_isa.expected.json --cycles 80
+python3 tools/run_program.py --input examples/subrutina.asm \
+  --expect examples/subrutina.expected.json --cycles 60
 python3 tools/run_program.py --input examples/mixto.asm --cycles 60
 ```
 
