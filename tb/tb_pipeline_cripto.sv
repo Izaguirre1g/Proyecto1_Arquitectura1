@@ -27,13 +27,16 @@
       autenticarse y a cargar la llave.
    C. Bundle mixto: ALU, LSU, BRU y CRIPTO en el mismo bundle, todas con
       efecto; 3 escrituras al banco en el mismo ciclo; vcr justo después de
-      setpwd y ell justo después de vcr (la bóveda y ESTADO se actualizan al
-      final de EX).
+      setpwd (la bóveda se actualiza al final de EX) y ell 3 bundles después
+      de vcr (ESTADO se escribe en WB y se valida en ID).
    D. Excepciones de privilegio: fsl sin autenticar, setpwd repetido y ell
       después de un vcr fallido. En los tres casos se anula el bundle completo
       (ALU, LSU, BRU y CRIPTO; un sye no salta ni escribe su enlace), se
       anulan los 2 bundles siguientes, el PC salta
-      al manejador en TRAP_VECTOR (0x1F0) y trap_pc guarda el PC culpable.
+      al manejador en TRAP_VECTOR (último bundle de la memoria de
+      instrucciones) y trap_pc guarda el PC culpable.
+      D4: un ell 2 bundles después del vcr que autentica también genera
+      excepción, porque ESTADO todavía no se escribió (regla N + 3).
    E. Aislamiento de la llave: el programa carga la llave en la bóveda y borra
       todas sus copias en registros y memoria; aun así cifra bien, y al final
       ni el banco de registros ni la memoria contienen la llave o la
@@ -274,14 +277,14 @@ endfunction
 
 logic [127:0] prog [0:31];
 
-// Manejador de excepciones en TRAP_VECTOR (0x1F0, bundle 31): x30 = 99 y se
-// queda en un bucle
+// Manejador de excepciones en TRAP_VECTOR (último bundle de la memoria de
+// instrucciones): x30 = 99 y se queda en un bucle
+localparam logic [127:0] HANDLER = {NOP, sye(5'd0, 16'd0), NOP, sumai(5'd30, 5'd0, 11'd99)};
+
 task automatic clear_prog();
 
     for (int i = 0; i < 32; i++)
         prog[i] = 128'b0;
-
-    prog[31] = bundle(sumai(5'd30, 5'd0, 11'd99), NOP, sye(5'd0, 16'd0), NOP);
 endtask
 
 // Carga prog en la memoria de instrucciones, aplica reset y ejecuta.
@@ -293,6 +296,8 @@ task automatic run_program(input int cycles);
 
     for (int i = 0; i < 32; i++)
         DUT.IMEM.memory[i] = prog[i];
+
+    DUT.IMEM.memory[TRAP_VECTOR / BUNDLE_BYTES] = HANDLER;
 
     repeat (2) @(negedge clk);
 
@@ -413,16 +418,16 @@ initial begin
     prog[2]  = solo_lsu(lsu(OP_CARGAI, 5'd0, 5'd10, 11'd276));
     prog[3]  = bundle(NOP, lsu(OP_CARGAI, 5'd0, 5'd12, 11'd280), NOP, setpwd(5'd6));
     prog[4]  = bundle(NOP, lsu(OP_CARGAI, 5'd0, 5'd14, 11'd284), NOP, vcr(16'h104));   // justo después de setpwd
-    prog[5]  = solo_cri(ell(2'd0, 2'd0, 5'd8, 5'd10));                                 // justo después de vcr
-    prog[7]  = solo_cri(ell(2'd0, 2'd2, 5'd12, 5'd14));
-    prog[8]  = bundle(sumai(5'd20, 5'd0, 11'd7),                                        // x20 = 7
+    prog[7]  = solo_cri(ell(2'd0, 2'd0, 5'd8, 5'd10));                                 // 3 bundles después de vcr
+    prog[8]  = solo_cri(ell(2'd0, 2'd2, 5'd12, 5'd14));
+    prog[9]  = bundle(sumai(5'd20, 5'd0, 11'd7),                                        // x20 = 7
                       lsu(OP_GUARDAP, 5'd0, 5'd5, 11'd768),                             // M[0x300] = x5
-                      branch(OP_IGUALNO, 5'd4, 5'd5, 11'd48),                           // -> B11
+                      branch(OP_IGUALNO, 5'd4, 5'd5, 11'd48),                           // -> B12
                       fsl(5'd16, 5'd4, 2'd0, 2'd0));                                    // (x16, x17)
-    prog[9]  = solo_alu(sumai(5'd21, 5'd0, 11'd1));                                     // anulado
-    prog[10] = solo_alu(sumai(5'd22, 5'd0, 11'd1));                                     // anulado
-    prog[11] = solo_cri(fsl(5'd18, 5'd16, 2'd0, 2'd1));                                 // (x18, x19)
-    prog[14] = bundle(NOP, NOP, sye(5'd0, 16'd0), NOP);                                 // fin
+    prog[10] = solo_alu(sumai(5'd21, 5'd0, 11'd1));                                     // anulado
+    prog[11] = solo_alu(sumai(5'd22, 5'd0, 11'd1));                                     // anulado
+    prog[12] = solo_cri(fsl(5'd18, 5'd16, 2'd0, 2'd1));                                 // (x18, x19)
+    prog[15] = bundle(NOP, NOP, sye(5'd0, 16'd0), NOP);                                 // fin
 
     DUT.DMEM.mem[32'h300 >> 2] = 32'h0;
 
@@ -471,7 +476,7 @@ initial begin
     check("una excepción",                              DUT.trap_count, 32'd1);
     check("trap_pc = 0x30 (bundle del fsl)",            DUT.trap_pc, 32'h30);
     check("se ejecutó el manejador: x30 = 99",          reg_val(30), 32'd99);
-    check("el manejador entra a EX 3 ciclos después",   first_ex(32'h1F0) - first_ex(32'h30), 32'd3);
+    check("el manejador entra a EX 3 ciclos después",   first_ex(TRAP_VECTOR) - first_ex(32'h30), 32'd3);
     check_true("los bundles 4, 5 y 6 no llegan a EX",
                first_ex(32'h40) == -1 && first_ex(32'h50) == -1 && first_ex(32'h60) == -1);
     check("ALU del bundle anulada: x20 = 0",            reg_val(20), 32'd0);
@@ -490,13 +495,13 @@ initial begin
     clear_prog();
     prog[0] = solo_alu(sumai(5'd6, 5'd0, 11'd85));
     prog[3] = solo_cri(setpwd(5'd6));                               // INIT = 1: válido
-    prog[4] = bundle(sumai(5'd20, 5'd0, 11'd1), NOP, NOP, setpwd(5'd6));   // INIT = 0: excepción
-    prog[5] = bundle(NOP, NOP, sye(5'd0, 16'd0), NOP);
+    prog[6] = bundle(sumai(5'd20, 5'd0, 11'd1), NOP, NOP, setpwd(5'd6));   // INIT = 0: excepción
+    prog[7] = bundle(NOP, NOP, sye(5'd0, 16'd0), NOP);
 
     run_program(30);
 
     check("una excepción",                       DUT.trap_count, 32'd1);
-    check("trap_pc = 0x40 (segundo setpwd)",     DUT.trap_pc, 32'h40);
+    check("trap_pc = 0x60 (segundo setpwd)",     DUT.trap_pc, 32'h60);
     check("se ejecutó el manejador: x30 = 99",   reg_val(30), 32'd99);
     check("ALU del bundle anulada: x20 = 0",     reg_val(20), 32'd0);
     check("ESTADO: INIT = 0, AUTH = 0",          DUT.crypto_estado, 32'b00);
@@ -510,22 +515,39 @@ initial begin
     clear_prog();
     prog[0] = solo_alu(sumai(5'd6, 5'd0, 11'd85));
     prog[3] = solo_cri(setpwd(5'd6));
-    prog[4] = solo_cri(vcr(16'h108));                               // AUTH = 1
-    prog[5] = solo_cri(ell(2'd0, 2'd0, 5'd6, 5'd6));                // válido
-    prog[6] = solo_cri(vcr(16'h10C));                               // AUTH = 0
-    prog[7] = solo_cri(ell(2'd0, 2'd2, 5'd6, 5'd6));                // excepción
-    prog[8] = bundle(NOP, NOP, sye(5'd0, 16'd0), NOP);
+    prog[4]  = solo_cri(vcr(16'h108));                              // AUTH = 1
+    prog[7]  = solo_cri(ell(2'd0, 2'd0, 5'd6, 5'd6));               // válido
+    prog[8]  = solo_cri(vcr(16'h10C));                              // AUTH = 0
+    prog[11] = solo_cri(ell(2'd0, 2'd2, 5'd6, 5'd6));               // excepción
+    prog[12] = bundle(NOP, NOP, sye(5'd0, 16'd0), NOP);
 
     run_program(30);
 
     check("una excepción",                          DUT.trap_count, 32'd1);
-    check("trap_pc = 0x70 (ell sin AUTH)",          DUT.trap_pc, 32'h70);
+    check("trap_pc = 0xB0 (ell sin AUTH)",          DUT.trap_pc, 32'hB0);
     check("se ejecutó el manejador: x30 = 99",      reg_val(30), 32'd99);
     check("ESTADO: AUTH = 0 tras el vcr fallido",   DUT.crypto_estado, 32'b00);
     check("el ell válido escribió la palabra 0",    DUT.CRYPTO.VAULT.keys[0][0], 32'd85);
     check("el ell válido escribió la palabra 1",    DUT.CRYPTO.VAULT.keys[0][1], 32'd85);
     check("el ell con excepción no escribió la palabra 2", DUT.CRYPTO.VAULT.keys[0][2], 32'd0);
     check("el ell con excepción no escribió la palabra 3", DUT.CRYPTO.VAULT.keys[0][3], 32'd0);
+
+
+    tb_section("D4. ell 2 bundles después de vcr (ESTADO todavía sin escribir)");
+
+    clear_prog();
+    prog[0] = solo_alu(sumai(5'd6, 5'd0, 11'd85));
+    prog[3] = solo_cri(setpwd(5'd6));
+    prog[4] = solo_cri(vcr(16'h108));                               // AUTH = 1 al final de su WB
+    prog[6] = solo_cri(ell(2'd0, 2'd0, 5'd6, 5'd6));                // en ID todavía AUTH = 0
+    prog[7] = bundle(NOP, NOP, sye(5'd0, 16'd0), NOP);
+
+    run_program(30);
+
+    check("una excepción",                          DUT.trap_count, 32'd1);
+    check("trap_pc = 0x60 (ell 2 bundles después)", DUT.trap_pc, 32'h60);
+    check("el vcr sí autenticó: AUTH = 1",          DUT.crypto_estado, 32'b01);
+    check("el ell con excepción no escribió",       DUT.CRYPTO.VAULT.keys[0][0], 32'd0);
 
 
     // ========================================================================
@@ -543,23 +565,22 @@ initial begin
     prog[2]  = solo_lsu(lsu(OP_CARGAI, 5'd0, 5'd10, 11'd276));
     prog[3]  = bundle(NOP, lsu(OP_CARGAI, 5'd0, 5'd12, 11'd280), NOP, setpwd(5'd6));
     prog[4]  = bundle(NOP, lsu(OP_CARGAI, 5'd0, 5'd14, 11'd284), NOP, vcr(16'h104));
-    // Carga de la llave y borrado de todas sus copias
-    prog[5]  = bundle(sumai(5'd6, 5'd0, 11'd0),  lsu(OP_GUARDAP, 5'd0, 5'd0, 11'd256), NOP,
-                      ell(2'd0, 2'd0, 5'd8, 5'd10));
-    prog[6]  = solo_lsu(lsu(OP_GUARDAP, 5'd0, 5'd0, 11'd272));
-    prog[7]  = bundle(sumai(5'd8, 5'd0, 11'd0),  lsu(OP_GUARDAP, 5'd0, 5'd0, 11'd276), NOP,
+    // Carga de la llave (3 bundles después de vcr) y borrado de todas sus copias
+    prog[5]  = bundle(sumai(5'd6, 5'd0, 11'd0),  lsu(OP_GUARDAP, 5'd0, 5'd0, 11'd256), NOP, NOP);
+    prog[6]  = solo_lsu(lsu(OP_GUARDAP, 5'd0, 5'd0, 11'd260));     // borra la candidata
+    prog[7]  = bundle(NOP, lsu(OP_GUARDAP, 5'd0, 5'd0, 11'd272), NOP, ell(2'd0, 2'd0, 5'd8, 5'd10));
+    prog[8]  = bundle(sumai(5'd8, 5'd0, 11'd0),  lsu(OP_GUARDAP, 5'd0, 5'd0, 11'd276), NOP,
                       ell(2'd0, 2'd2, 5'd12, 5'd14));
-    prog[8]  = bundle(sumai(5'd10, 5'd0, 11'd0), lsu(OP_GUARDAP, 5'd0, 5'd0, 11'd280), NOP, NOP);
-    prog[9]  = bundle(sumai(5'd12, 5'd0, 11'd0), lsu(OP_GUARDAP, 5'd0, 5'd0, 11'd284), NOP, NOP);
-    prog[10] = bundle(sumai(5'd14, 5'd0, 11'd0), lsu(OP_CARGAI, 5'd0, 5'd4, 11'd512), NOP, NOP);
-    prog[11] = solo_lsu(lsu(OP_CARGAI, 5'd0, 5'd5, 11'd516));
-    prog[12] = solo_lsu(lsu(OP_GUARDAP, 5'd0, 5'd0, 11'd260));     // borra la candidata
+    prog[9]  = bundle(sumai(5'd10, 5'd0, 11'd0), lsu(OP_GUARDAP, 5'd0, 5'd0, 11'd280), NOP, NOP);
+    prog[10] = bundle(sumai(5'd12, 5'd0, 11'd0), lsu(OP_GUARDAP, 5'd0, 5'd0, 11'd284), NOP, NOP);
+    prog[11] = bundle(sumai(5'd14, 5'd0, 11'd0), lsu(OP_CARGAI, 5'd0, 5'd4, 11'd512), NOP, NOP);
+    prog[12] = solo_lsu(lsu(OP_CARGAI, 5'd0, 5'd5, 11'd516));
     // Cifrado de un bloque
     for (int i = 0; i < 4; i++)
-        prog[14 + 3 * i] = solo_cri(fsl(5'd4, 5'd4, 2'd0, 2'(i)));
-    prog[26] = solo_lsu(lsu(OP_GUARDAP, 5'd0, 5'd4, 11'd512));
-    prog[27] = solo_lsu(lsu(OP_GUARDAP, 5'd0, 5'd5, 11'd516));
-    prog[28] = bundle(NOP, NOP, sye(5'd0, 16'd0), NOP);
+        prog[15 + 3 * i] = solo_cri(fsl(5'd4, 5'd4, 2'd0, 2'(i)));
+    prog[27] = solo_lsu(lsu(OP_GUARDAP, 5'd0, 5'd4, 11'd512));
+    prog[28] = solo_lsu(lsu(OP_GUARDAP, 5'd0, 5'd5, 11'd516));
+    prog[29] = bundle(NOP, NOP, sye(5'd0, 16'd0), NOP);
 
     run_program(50);
 
