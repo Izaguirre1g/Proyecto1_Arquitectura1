@@ -13,11 +13,14 @@
          OP_MENORA        if (rf1 <  rf2) (s)    PC += off
          OP_MAYOROIGUAL   if (rf1 >= rf2) (s)    PC += off
 
-     Jump (TYPE_BRU_JUMP, is_jump = 1):
-         OP_SYE           rg = PC + 4; PC = PC + off (signed 16 bits)
+     Jumps (TYPE_BRU_JUMP, is_jump = 1):
+         OP_SYE           rg = PC + 16; PC = PC + off (signed 16 bits)
+         OP_SYER          rg = PC + 16; PC = (rf1 + off) & ~15 (off signed 11 bits)
 
- Sólo `sye` escribe en el regfile (rg = PC + 4 como dirección de retorno).
- Los branches condicionales sólo afectan al PC.
+ Sólo `sye` y `syer` escriben en el regfile (rg = PC + 16, el bundle siguiente,
+ como dirección de retorno). Los branches condicionales sólo afectan al PC.
+ syer pone en 0 los 4 bits bajos del destino para saltar siempre al inicio
+ de un bundle; `syer x0, ra, 0` (ret) vuelve de una subrutina.
 
  Estrategia de saltos (modelo del proyecto, ver docs/simulation.md):
  ------------------------------------------------------------------------------
@@ -27,15 +30,16 @@
 
      1. Invalidar los dos bundles que están en IF e ID (2 ciclos de penalización)
      2. Cargar el PC con la dirección calculada por este módulo (target_pc)
-     3. Si es `sye`, registrar el link (PC + 4) para escribirlo en WB
+     3. Si es `sye` o `syer`, registrar el link (PC + 16) para escribirlo en WB
 
  Salidas:
      branch_flush   1 si el branch se tomó o si es un jump (top lo usa
                     para hacer flush de IF e ID y cargar el PC con target_pc)
-     target_pc      dirección destino del salto (PC + offset firmado)
-     link_we_d      1 si hay que escribir el link en el siguiente ciclo (sye)
+     target_pc      dirección destino del salto (PC + offset firmado, o
+                    rf1 + offset alineado a 16 en syer)
+     link_we_d      1 si hay que escribir el link en el siguiente ciclo (sye, syer)
      link_rd_d      registro destino del link
-     link_value_d   valor del link (= PC + 4)
+     link_value_d   valor del link (= PC + 16)
 
  Las señales link_* están registradas un ciclo para coincidir con la latencia
  de EX→WB de la ALU y del load de la LSU.
@@ -65,10 +69,10 @@ module bru(
     input  logic        is_jump,       // 1 si tipo == TYPE_BRU_JUMP
 
     // Offsets (signed)
-    input  logic [10:0] br_imm,        // 11 bits signed (branch condicional)
+    input  logic [10:0] br_imm,        // 11 bits signed (branch condicional y syer)
     input  logic [15:0] jmp_imm,       // 16 bits signed (sye)
 
-    // Destino del link (sye)
+    // Destino del link (sye y syer)
     input  logic [4:0]  link_rd_in,
 
     // Salidas hacia el control del pipeline (combinacionales)
@@ -126,8 +130,12 @@ always @(*) begin
     end
     else if (is_jump) begin
 
-        pc_branch_target = pc_current + jmp_off_sext;
-        flush_now        = 1'b1;     // sye siempre flushea
+        if (bru_op == OP_SYER)
+            pc_branch_target = (rf1_data + br_off_sext) & ~32'hF;   // inicio de bundle
+        else
+            pc_branch_target = pc_current + jmp_off_sext;
+
+        flush_now = 1'b1;            // sye y syer siempre flushean
     end
 end
 
@@ -141,7 +149,7 @@ assign target_pc    = pc_branch_target;
 
 
 // ============================================================================
-// Link value: rg = PC + 4 (literal del ISA_Proyecto.md).
+// Link value: rg = PC + 16, el bundle siguiente (ISA_Proyecto.md).
 // Registrado un ciclo para llegar a WB en el momento correcto.
 // ============================================================================
 
@@ -151,7 +159,7 @@ logic [31:0] link_value_next;
 
 assign link_we_next   = is_jump;
 assign link_rd_next   = link_rd_in;
-assign link_value_next = pc_current + 32'd4;
+assign link_value_next = pc_current + BUNDLE_BYTES;
 
 always @(posedge clk) begin
 

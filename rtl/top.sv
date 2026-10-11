@@ -24,7 +24,7 @@
      slot 0 = ALU       (suma, resta, AND, OR, XOR, shifts, comparaciones,
                           instrucciones tipo registro y tipo inmediato)
      slot 1 = LSU       (guardap, guardab, cargai, cargabai)
-     slot 2 = BRU       (igualsi, igualno, menora, mayoroigual, sye)
+     slot 2 = BRU       (igualsi, igualno, menora, mayoroigual, sye, syer)
      slot 3 = CRIPTO    (fsl, fsli, ell, vcr, camcon, setpwd)
 
  Banco de registros (rtl/regfile.sv): 8 lecturas (2 por slot) y 5 escrituras.
@@ -338,7 +338,7 @@ decoder_bru DECODER_BRU (
     .jmp_imm(bru_jmp_imm),
     .is_branch(bru_is_branch),
     .is_jump(bru_is_jump),
-    .we()                       // no se usa: el BRU escribe el enlace sólo en sye
+    .we()                       // no se usa: el BRU escribe el enlace sólo en sye y syer
 );
 
 
@@ -557,7 +557,7 @@ memory #(.SIZE_WORDS(DMEM_BYTES / 4)) DMEM (
 
 // El PC del bundle en EX lo entrega pipeline_id_ex (lo captura del id_pc
 // en ID y lo expone como ex_pc). El bru lo usa como base para calcular el
-// target de los saltos condicionales y de sye.
+// target de los saltos condicionales y de sye (syer salta a rf1 + offset).
 assign ex_pc = ex_pc_from_id_ex;
 
 bru BRU (

@@ -28,7 +28,7 @@
 
    Escritura  0      slot 0  ALU     rg
               1      slot 1  LSU     rg de cargai / cargabai
-              2      slot 2  BRU     rg de sye (dirección de retorno)
+              2      slot 2  BRU     rg de sye y syer (dirección de retorno)
               3      slot 3  CRIPTO  rd   (L_out de fsl / fsli)
               4      slot 3  CRIPTO  rd+1 (R_out de fsl / fsli)
 

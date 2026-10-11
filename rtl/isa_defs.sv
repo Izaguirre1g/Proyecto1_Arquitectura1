@@ -40,7 +40,7 @@ localparam logic [31:0] TRAP_VECTOR = (IMEM_BUNDLES - 1) * BUNDLE_BYTES;
 
 localparam logic [6:0] TYPE_STORE     = 7'b1001001;   // LSU (load/store)
 localparam logic [6:0] TYPE_IMM       = 7'b1000000;
-localparam logic [6:0] TYPE_BRU_JUMP  = 7'b1001011;   // sye (jump-and-link)
+localparam logic [6:0] TYPE_BRU_JUMP  = 7'b1001011;   // sye, syer (jump-and-link)
 localparam logic [6:0] TYPE_BRU_COND  = 7'b1000001;   // igualsi, igualno, menora, mayoroigual
 localparam logic [6:0] TYPE_REG       = 7'b1101010;
 localparam logic [6:0] TYPE_CRYPTO    = 7'b0000010;
@@ -105,11 +105,12 @@ localparam logic [3:0] OP_MAYOROIGUAL= 4'b1000;  // if (rf1 >= rf2) PC += off   
 
 
 // ============================================================================
-// Operaciones tipo BRU jump (sye, tipo 7'b1001011)
-// ID [24:21]
+// Operaciones tipo BRU jump (sye y syer, tipo 7'b1001011)
+// ID [24:21]. Los IDs 0010-1111 están reservados (el decoder los trata como NOP).
 // ============================================================================
 
-localparam logic [3:0] OP_SYE = 4'b0000;        // rg = PC + 4; PC = PC + offset
+localparam logic [3:0] OP_SYE  = 4'b0000;       // rg = PC + 16; PC = PC + offset
+localparam logic [3:0] OP_SYER = 4'b0001;       // rg = PC + 16; PC = (rf1 + offset) & ~15
 
 
 // ============================================================================

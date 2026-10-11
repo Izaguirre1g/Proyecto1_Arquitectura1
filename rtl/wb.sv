@@ -14,7 +14,7 @@
  ------------------------------------------------------------------------------
    Puerto 0  slot 0  ALU     rg de las instrucciones tipo registro e inmediato
    Puerto 1  slot 1  LSU     rg de cargai / cargabai
-   Puerto 2  slot 2  BRU     rg de sye (dirección de retorno)
+   Puerto 2  slot 2  BRU     rg de sye y syer (dirección de retorno)
    Puerto 3  slot 3  CRIPTO  rd   <- L_out de fsl / fsli
    Puerto 4  slot 3  CRIPTO  rd+1 <- R_out de fsl / fsli
 
