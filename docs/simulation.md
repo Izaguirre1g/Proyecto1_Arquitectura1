@@ -32,7 +32,7 @@ Instalación en Ubuntu o WSL:
 sudo apt install iverilog gtkwave make
 ```
 
-Verilator todavía no está soportado (ver [Pendientes](#10-pendientes)).
+El proyecto usa sólo Icarus Verilog; el grupo decidió no usar Verilator.
 
 ## 2. Estructura del repositorio
 
@@ -41,7 +41,9 @@ rtl/                 módulos SystemVerilog del procesador
 tb/                  testbenches de make sim (tb_<modulo>.sv) y tb_utils.svh
 tests/               pruebas del ensamblador (Python) y testbenches que usan las
   rtl/               herramientas: tb_archivo.sv (make archivo), tb_assembled_program.sv
-tools/               ensamblador y herramientas de carga y extracción de memoria
+                     (run_program.py) y tb_ce1108_program.sv (run_ce1108.py)
+tools/               ensamblador, ejecución de programas, adaptador de CE1108 y
+                     herramientas de carga y extracción de memoria
 examples/            programas .asm y archivos de prueba
 docs/                documentación (este archivo)
 build/               generado por make (.gitignore)
@@ -184,7 +186,7 @@ Utilidades de `tb/tb_utils.svh`:
 | Parámetro | Valor | Uso |
 |:---|:---|:---|
 | `NUM_SLOTS`, `SLOT_W` | 4, 32 | Slots por bundle y bits por slot (`dispatch`). |
-| `BUNDLE_W`, `BUNDLE_BYTES` | 128, 16 | Ancho del bundle (`fetch`, `pipeline_if_id`, `top`) y avance del PC (`pc_branch`). |
+| `BUNDLE_W`, `BUNDLE_BYTES` | 128, 16 | Ancho del bundle (`fetch`, `pipeline_if_id`, `top`), avance del PC (`pc_branch`) y enlace de `sye` y `syer` (`bru`). |
 | `IMEM_BUNDLES` | 1024 | Tamaño de la memoria de instrucciones; también lo leen las herramientas de Python. |
 | `DMEM_BYTES` | 65536 | Tamaño de la memoria de datos. |
 | `TRAP_VECTOR` | `0x3FF0` | Manejador de excepciones: el último bundle de la memoria de instrucciones. |
@@ -223,7 +225,7 @@ Asignación de puertos en la configuración completa:
 |:---|:---|:---|
 | 0, 1 | 0 ALU | `rf1`, `rf2` |
 | 2, 3 | 1 LSU | `rf1` (base), `rf2` (dato de `guardap`/`guardab`) |
-| 4, 5 | 2 BRU | `rf1`, `rf2` de las instrucciones de control |
+| 4, 5 | 2 BRU | `rf1`, `rf2` de las instrucciones de control; `rf1` de `syer` |
 | 6, 7 | 3 CRIPTO | par fuente `(r1, r1+1)` de `fsl`/`fsli`, o `(rs1, rs2)` de `ell` |
 
 | Puerto de escritura | Slot | Instrucciones |
@@ -268,7 +270,9 @@ Además, dentro de un bundle todos los slots leen sus operandos antes de que se 
 resultado del mismo bundle. Por ejemplo, `sumai x2, x2, 1` lee el valor anterior de x2.
 
 Esta regla no está escrita en el ISA de la Entrega 1 y es parte del contrato con el ensamblador y
-con el compilador de CE1108. `tb_regfile_pipeline` la verifica sobre `top`.
+con el compilador de CE1108. `tb_regfile_pipeline` la verifica sobre `top`; `tools/assembler.py`
+rechaza los programas que no la cumplen y `tools/bundle_linear.py` la respeta poniendo 2 bundles
+NOP entre instrucciones.
 
 ### Integración actual
 
@@ -403,8 +407,7 @@ en el mismo ciclo, gana `camcon`; es un error de calendarización.
 ### Decisiones de diseño a validar con el grupo
 
 - `camcon` rota la contraseña de la bóveda y también la copia en M[dir]. Así la siguiente `vcr` con
-  esa copia sigue autenticando. El ISA escribe `mem[dir] = ROL(mem[dir], imm)` y a la vez dice que
-  “renueva la contraseña”; se implementaron las dos cosas.
+  esa copia sigue autenticando. Así quedó descrito en `ISA_Proyecto.md`.
 - El reset borra la bóveda y vuelve a INIT = 1, lo que permite un nuevo `setpwd` después de cada
   reset; las llaves anteriores no se pueden recuperar.
 - La memoria de datos pasó a tener dos puertos (A para la LSU, B para la cripto).
@@ -427,7 +430,6 @@ Testbenches autoverificables:
 | `tb_decoder_crypto` | Las 6 instrucciones con codificaciones generadas por el ensamblador del grupo (los campos coinciden con `tools/assembler.py`), lecturas del banco por instrucción, `we`, campos en sus extremos, slot inactivo (NOP, otros tipos e IDs reservados) y la validación de privilegios de las 6 instrucciones con las 4 combinaciones de AUTH e INIT. |
 | `tb_crypto_unit` | La unidad con su bóveda y el puerto B de la memoria: excepción de cada instrucción privilegiada sin permiso y sin efectos, `setpwd` repetido, `vcr` correcta e incorrecta, carga de las 4 llaves, el vector conocido HOLA2026 → `03D44466 D685AFAF` ronda por ronda, cifrado y descifrado completos con cada llave, 500 rondas aleatorias de `fsl` y `fsli` contra la referencia, `camcon`, `valid_in = 0`, reset en medio de la ejecución y que ESTADO cambie en el flanco de WB y no en el de EX. La validación de ID se modela en el testbench. |
 | `tb_pipeline_cripto` | Programas sobre `top`. A y B: cifrado y descifrado de un archivo de 4 bloques con el programa de ejemplo (`setpwd`, `vcr`, `ell` y un bucle de 4 rondas por bloque) contra la referencia. C: ALU, LSU, BRU y CRIPTO en el mismo bundle, 3 escrituras al banco en el mismo ciclo, `vcr` justo después de `setpwd` y `ell` 3 bundles después de `vcr`. D: excepción por `fsl` sin autenticar, `setpwd` repetido, `ell` después de un `vcr` fallido y `ell` 2 bundles después del `vcr` que autentica (ESTADO todavía sin escribir): bundle completo anulado, 2 bundles anulados, salto al manejador en `TRAP_VECTOR` y `trap_pc`. E: con la llave borrada de registros y memoria el programa cifra bien, y al final ningún registro ni palabra de memoria contiene la llave o la contraseña. Se comprobó que falla si se quita cualquiera de los controles de acceso o de las anulaciones. |
-
 | `tb_top` | Sistema completo con un programa cargado desde un archivo `.mem` (formato del ensamblador): orden de los slots en el archivo, escrituras de la ALU en orden por las salidas debug (x5 = 50 y x6 = 30), resultado en el banco y que en un mismo ciclo haya 4 bundles distintos en IF, ID, EX y WB. |
 | `tb_fetch` | Reset, PC y bundle pasan sin esperar un flanco y 200 valores aleatorios. |
 | `tb_dispatch` | Cada slot sale de sus 32 bits del bundle, `valid` y 500 bundles aleatorios. |
@@ -449,5 +451,5 @@ Fuera de `make sim`: `tests/rtl/tb_archivo.sv` (`make archivo`) cifra y descifra
   unidad criptográfica (temporización de la bóveda, `TRAP_VECTOR` y manejador de excepciones).
 - El ensamblador no tiene forma de ubicar código en una dirección fija, así que un programa
   ensamblado todavía no puede poner su manejador de excepciones en `TRAP_VECTOR`.
-- Comunicar la regla de dependencias de la sección 6 al ensamblador y al grupo de CE1108.
-- Soporte opcional de Verilator en el Makefile.
+- Comunicar al grupo de CE1108 la regla de dependencias de la sección 6 (el ensamblador ya la
+  verifica) y los cambios del ISA del 11 de octubre: enlace PC + 16 en `sye`, `syer` y `ret`.
