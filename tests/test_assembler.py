@@ -7,7 +7,7 @@ import sys
 import tempfile
 import unittest
 
-from tools.assembler import (ALIASES, AssemblyError, SPECS, assemble_source,
+from tools.assembler import (ALIASES, AssemblyError, MAX_BUNDLES, SPECS, assemble_source,
                              encode_instruction, integer, register)
 
 
@@ -177,9 +177,9 @@ class ProgramTests(unittest.TestCase):
             assemble_source("# comentario\n\nnop\nsuma x1,x0\n")
 
     def test_capacity_and_empty_program(self):
-        self.assertEqual(len(assemble_source("nop\n" * 32).bundles), 32)
-        with self.assertRaisesRegex(AssemblyError, "32 bundles"):
-            assemble_source("nop\n" * 33)
+        self.assertEqual(len(assemble_source("nop\n" * MAX_BUNDLES).bundles), MAX_BUNDLES)
+        with self.assertRaisesRegex(AssemblyError, f"{MAX_BUNDLES} bundles"):
+            assemble_source("nop\n" * (MAX_BUNDLES + 1))
         with self.assertRaisesRegex(AssemblyError, "no contiene"):
             assemble_source("# comentario\n")
 
