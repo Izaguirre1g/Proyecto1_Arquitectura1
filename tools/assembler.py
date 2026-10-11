@@ -167,7 +167,7 @@ def encode_instruction(text: str, *, pc: int = 0,
         return Instruction(base.word, base.reads, base.writes, text.strip(), base.slot, indirect=True)
 
     if mnemonic in {"csi", "csd"}:
-        raise AssemblyError("csi/csd contradicen el aislamiento de la bóveda; falta resolver la ISA")
+        raise AssemblyError("csi/csd no existen en el ISA: se eliminaron porque rompían el aislamiento de la bóveda")
     if mnemonic == "camcom":
         mnemonic = "camcon"
 
