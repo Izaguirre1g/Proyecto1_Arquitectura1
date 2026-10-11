@@ -12,7 +12,19 @@ import sys
 
 TYPE_REG = 0b1101010
 TYPE_IMM = 0b1000000
-MAX_BUNDLES = 32  # instruction_memory.memory[0:31], sin ampliar el RTL.
+
+
+def _imem_bundles() -> int:
+    """Capacidad de la memoria de instrucciones: IMEM_BUNDLES de rtl/isa_defs.sv."""
+    defs = Path(__file__).resolve().parents[1] / "rtl" / "isa_defs.sv"
+    try:
+        match = re.search(r"IMEM_BUNDLES\s*=\s*(\d+)", defs.read_text(encoding="utf-8"))
+    except OSError:
+        match = None
+    return int(match[1]) if match else 1024
+
+
+MAX_BUNDLES = _imem_bundles()  # bundles de instruction_memory (rtl/isa_defs.sv)
 READ_DISTANCE = 3
 
 
