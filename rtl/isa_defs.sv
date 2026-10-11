@@ -96,6 +96,19 @@ localparam logic [3:0] OP_SYE = 4'b0000;        // rg = PC + 4; PC = PC + offset
 
 
 // ============================================================================
+// Operaciones tipo CRIPTO (tipo 7'b0000010)
+// ID [24:21]
+// ============================================================================
+
+localparam logic [3:0] OP_FSL    = 4'b0000;     // (L, R) = ronda Feistel4 directa
+localparam logic [3:0] OP_FSLI   = 4'b0001;     // (L, R) = ronda Feistel4 inversa
+localparam logic [3:0] OP_ELL    = 4'b0010;     // bóveda[LK][off..off+1] = (rs1, rs2)
+localparam logic [3:0] OP_VCR    = 4'b0011;     // AUTH = (M[dir_cand] == contraseña)
+localparam logic [3:0] OP_CAMCON = 4'b0100;     // contraseña y M[dir] rotan imm bits
+localparam logic [3:0] OP_SETPWD = 4'b0101;     // contraseña = rs (sólo con INIT = 1)
+
+
+// ============================================================================
 // Operaciones internas de ALU
 // (estas son nuestras señales hacia la unidad ALU)
 // ============================================================================

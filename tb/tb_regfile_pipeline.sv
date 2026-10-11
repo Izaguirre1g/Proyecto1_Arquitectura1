@@ -6,7 +6,7 @@
 
  Descripción:
  ------------------------------------------------------------------------------
- Verifica, sobre el pipeline completo (cpu_top), la regla de dependencias de
+ Verifica, sobre el pipeline completo (top), la regla de dependencias de
  datos que impone el banco de registros sin bypass:
 
      El valor que escribe el bundle N lo lee correctamente el bundle N+3 o
@@ -52,7 +52,7 @@ logic [4:0] debug_rd;
 logic debug_write;
 
 
-cpu_top DUT (
+top DUT (
 
     .clk(clk),
     .reset(reset),

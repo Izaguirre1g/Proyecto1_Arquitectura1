@@ -6,7 +6,7 @@
 
  Descripción:
  ------------------------------------------------------------------------------
- Ejecuta programas cortos sobre el procesador completo (cpu_top) y verifica la
+ Ejecuta programas cortos sobre el procesador completo (top) y verifica la
  integración de los slots ALU, LSU y BRU dentro del pipeline IF / ID / EX / WB.
  Cada programa se escribe directo en instruction_memory, se ejecuta desde el
  reset y al final se revisan el banco de registros, la memoria de datos y el
@@ -49,7 +49,7 @@ logic [4:0]  debug_rd;
 logic        debug_write;
 
 
-cpu_top DUT (
+top DUT (
 
     .clk(clk),
     .reset(reset),

@@ -14,11 +14,12 @@
                   lsu_operand_a (base), lsu_operand_b (dato de store)
    Slot 2 - BRU: bru_op, bru_rd, bru_br_imm, bru_jmp_imm, bru_is_branch,
                   bru_is_jump, bru_we, bru_operand_a, bru_operand_b
-   Slot 3 - CRIPTO: (gestionado por Dylan, no propagado en este módulo)
+   Slot 3 - CRIPTO: crypto_valid, crypto_op, crypto_lk, crypto_rk, crypto_rd,
+                     crypto_addr, crypto_imm, crypto_operand_a, crypto_operand_b
 
 Esto se justifica porque cada slot tiene su propio decoder en ID y necesita su
 propio conjunto de señales en EX. Mantenerlas separadas evita confusión y
-permite que el resto del pipeline (cpu_top, wb, etc.) vea cada unidad de
+permite que el resto del pipeline (top, wb, etc.) vea cada unidad de
 forma independiente.
 
 Los operandos leídos del banco de registros en ID también pasan por este
@@ -29,8 +30,9 @@ Funcionamiento en el flanco positivo:
    reset o flush → todos los registros a 0 (burbuja: NOP en los 4 slots)
    en otro caso  → captura las señales de entrada y las propaga a EX
 
-flush lo activa el BRU cuando un salto se toma en EX: el bundle que está en
-ID en ese ciclo se anula (no hay delay slots).
+flush lo activa top cuando un salto se toma en EX o cuando la unidad
+criptográfica genera una excepción de privilegio: el bundle que está en ID en
+ese ciclo se anula (no hay delay slots).
 
 ================================================================================
 */
@@ -124,6 +126,30 @@ module pipeline_id_ex(
 
 
     // -------------------------------------------------------------------------
+    // Slot 3 - CRIPTO
+    // -------------------------------------------------------------------------
+    input  logic         crypto_valid,        // el slot 3 trae una instrucción cripto
+    input  logic [3:0]   crypto_op,
+    input  logic [1:0]   crypto_lk,
+    input  logic [1:0]   crypto_rk,           // subllave (fsl/fsli) u offset (ell)
+    input  logic [4:0]   crypto_rd,
+    input  logic [15:0]  crypto_addr,         // vcr / camcon
+    input  logic [4:0]   crypto_imm,          // camcon
+    input  logic [31:0]  crypto_operand_a,    // L, rs1 o rs
+    input  logic [31:0]  crypto_operand_b,    // R o rs2
+
+    output logic         crypto_valid_out,
+    output logic [3:0]   crypto_op_out,
+    output logic [1:0]   crypto_lk_out,
+    output logic [1:0]   crypto_rk_out,
+    output logic [4:0]   crypto_rd_out,
+    output logic [15:0]  crypto_addr_out,
+    output logic [4:0]   crypto_imm_out,
+    output logic [31:0]  crypto_operand_a_out,
+    output logic [31:0]  crypto_operand_b_out,
+
+
+    // -------------------------------------------------------------------------
     // PC (para calcular saltos en EX y para debug)
     // -------------------------------------------------------------------------
     input  logic [31:0]  pc_in,
@@ -178,6 +204,17 @@ always @(posedge clk) begin
         bru_operand_a_out  <= 32'b0;
         bru_operand_b_out  <= 32'b0;
 
+        // CRIPTO
+        crypto_valid_out     <= 1'b0;
+        crypto_op_out        <= 4'b0;
+        crypto_lk_out        <= 2'b0;
+        crypto_rk_out        <= 2'b0;
+        crypto_rd_out        <= 5'b0;
+        crypto_addr_out      <= 16'b0;
+        crypto_imm_out       <= 5'b0;
+        crypto_operand_a_out <= 32'b0;
+        crypto_operand_b_out <= 32'b0;
+
         valid_out <= 1'b0;
         pc_out    <= 32'b0;
     end
@@ -217,6 +254,17 @@ always @(posedge clk) begin
         bru_we_out         <= bru_we;
         bru_operand_a_out  <= bru_operand_a;
         bru_operand_b_out  <= bru_operand_b;
+
+        // CRIPTO
+        crypto_valid_out     <= crypto_valid;
+        crypto_op_out        <= crypto_op;
+        crypto_lk_out        <= crypto_lk;
+        crypto_rk_out        <= crypto_rk;
+        crypto_rd_out        <= crypto_rd;
+        crypto_addr_out      <= crypto_addr;
+        crypto_imm_out       <= crypto_imm;
+        crypto_operand_a_out <= crypto_operand_a;
+        crypto_operand_b_out <= crypto_operand_b;
 
         valid_out <= valid_in;
         pc_out    <= pc_in;

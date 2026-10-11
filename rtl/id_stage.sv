@@ -12,7 +12,7 @@
  Componentes integrados:
  ------------------------------------------------------------------------------
  - Decoder ALU.
- (El Register File se encuentra en cpu_top.)
+ (El Register File se encuentra en top.)
 
  Salidas:
  ------------------------------------------------------------------------------
@@ -31,7 +31,7 @@ module id_stage(
     input logic [31:0] instruction,
 
 
-    // Banco de registros (vive en cpu_top, compartido entre los 4 slots)
+    // Banco de registros (vive en top, compartido entre los 4 slots)
 
     output logic [4:0] rs1,
     output logic [4:0] rs2,
@@ -75,7 +75,7 @@ decoder_alu decoder (
 );
 
 // Register File
-// El banco ya no vive en esta etapa: está en cpu_top con su configuración
+// El banco ya no vive en esta etapa: está en top con su configuración
 // completa (8 lecturas / 5 escrituras) y se comparte entre los 4 slots. Esta
 // etapa entrega los índices rs1/rs2 del slot ALU y recibe sus datos leídos.
 

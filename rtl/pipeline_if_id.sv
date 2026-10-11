@@ -15,7 +15,7 @@
 
  Esta señal llega una vez que el BRU calculó el branch (ciclo N) y debe
  afectar el bundle que está en IF/ID en el ciclo N+1. La conexión exacta
- (combinacional desde el BRU o registrada) la hace cpu_top.sv.
+ (combinacional desde el BRU o registrada) la hace top.sv.
 
 ================================================================================
 */

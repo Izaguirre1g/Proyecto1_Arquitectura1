@@ -51,7 +51,7 @@ module tb_cpu_alu_path;
     logic [31:0] rs1_data;
     logic [31:0] rs2_data;
 
-    // El banco de registros vive en cpu_top; aquí se instancia aparte con 2
+    // El banco de registros vive en top; aquí se instancia aparte con 2
     // lecturas y 1 escritura (sólo el slot ALU).
     regfile #(
 
