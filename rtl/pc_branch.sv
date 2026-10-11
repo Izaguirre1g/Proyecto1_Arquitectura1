@@ -4,27 +4,27 @@
 
  Descripción:
  ------------------------------------------------------------------------------
- Wrapper sobre el Program Counter básico (rtl/pc.sv) que añade soporte para
- los saltos del BRU.
+ Program Counter del procesador, con soporte para los saltos del BRU y para
+ las excepciones de la unidad criptográfica.
 
  Comportamiento en cada flanco positivo del reloj:
 
      reset         pc_out <= 0
      branch_flush  pc_out <= target_pc        (destino del salto)
-     default       pc_out <= pc_out + 16      (siguiente bundle)
+     default       pc_out <= pc_out + BUNDLE_BYTES   (siguiente bundle, 16 bytes)
 
- El incremento por bundle (16 bytes) coincide con el pc.sv original: cada
- bundle del ISA mide exactamente 128 bits = 16 bytes.
+ Cada bundle del ISA mide exactamente BUNDLE_W = 128 bits = 16 bytes.
 
- Las señales branch_flush y target_pc provienen del módulo BRU
- (rtl/bru.sv). El control del pipeline (rtl/top.sv) las conecta a este
- contador. Cuando branch_flush = 1, el control debe además invalidar los
- dos bundles que están en IF e ID (penalización de 2 ciclos).
+ rtl/top.sv conecta branch_flush y target_pc al cambio de flujo: un salto
+ tomado del BRU (rtl/bru.sv) o una excepción de privilegio (target_pc =
+ TRAP_VECTOR). En ese caso el control además invalida los dos bundles que
+ están en IF e ID (penalización de 2 ciclos).
 
 ================================================================================
 */
 
 `default_nettype none
+`include "isa_defs.sv"
 
 
 module pc_branch(
@@ -46,7 +46,7 @@ always @(posedge clk) begin
     else if (branch_flush)
         pc_out <= target_pc;
     else
-        pc_out <= pc_out + 32'd16;
+        pc_out <= pc_out + BUNDLE_BYTES;
 end
 
 
