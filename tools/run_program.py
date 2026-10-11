@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Ensambla y ejecuta programas ALU/LSU/BRU sobre top."""
+"""Ensambla y ejecuta programas ALU/LSU/BRU/CRIPTO sobre top."""
 
 from __future__ import annotations
 
@@ -13,13 +13,15 @@ import subprocess
 import sys
 
 if __package__:
-    from .assembler import AssemblyError, assemble_source, integer, register
+    from .assembler import MAX_BUNDLES, AssemblyError, assemble_source, integer, register
 else:
-    from assembler import AssemblyError, assemble_source, integer, register
+    from assembler import MAX_BUNDLES, AssemblyError, assemble_source, integer, register
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MAX_RUN_BUNDLES = 28
+# Se reservan 4 bundles de la memoria de instrucciones para el vaciado del
+# pipeline después del último bundle del programa.
+MAX_RUN_BUNDLES = MAX_BUNDLES - 4
 
 
 class SimulationError(RuntimeError):
@@ -73,16 +75,15 @@ def run_program(source: Path, workdir: Path, expected: dict[int, int] | None = N
                 cycles: int | None = None) -> dict[int, int]:
     source = source.resolve()
     program = assemble_source(source.read_text(encoding="utf-8"))
-    if any(b.instructions[3].word for b in program.bundles):
-        raise SimulationError("top aún no conecta la unidad criptográfica")
     if cycles is not None and not len(program.bundles) + 4 <= cycles <= 100000:
         raise SimulationError("cycles debe cubrir el programa y ser menor o igual a 100000")
     for address, value in (expected_memory or {}).items():
         if address % 4 or not 0 <= address <= 65532 or not 0 <= value <= 0xffffffff:
             raise SimulationError("memoria esperada: direcciones alineadas de 64 KiB y valores de 32 bits")
     if len(program.bundles) > MAX_RUN_BUNDLES:
-        raise SimulationError("la prueba sobre la memoria actual admite hasta 28 bundles; "
-                              "reserva 4 ciclos de vaciado antes de superar sus 32 entradas")
+        raise SimulationError(f"la prueba admite hasta {MAX_RUN_BUNDLES} bundles; reserva 4 "
+                              f"ciclos de vaciado antes de superar las {MAX_BUNDLES} entradas "
+                              "de la memoria de instrucciones")
     compiler, simulator = tool("IVERILOG", "iverilog"), tool("VVP", "vvp")
     workdir = workdir.resolve()
     generated = [workdir / name for name in
