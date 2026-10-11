@@ -8,15 +8,20 @@ rtl/                   módulos del procesador (SystemVerilog)
   alu.sv, decoder_alu.sv         — Slot 0 (Fabricio)
   lsu.sv, decoder_lsu.sv         — Slot 1 (Alejandro)
   bru.sv, decoder_bru.sv         — Slot 2 (Alejandro)
-  crypto_unit.sv (pendiente)    — Slot 3 (Dylan)
+  crypto_unit.sv, key_vault.sv,
+  decoder_crypto.sv              — Slot 3 (cripto y bóveda)
   top.sv, fetch.sv,
   pipeline_*.sv, wb.sv,
   regfile.sv, dispatch.sv        — compartidos
-  instruction_memory.sv          — memoria de instrucciones
-  memory.sv, pc.sv, pc_branch.sv — memoria de datos y PC
-tb/                    testbenches (uno por módulo + integración)
+  isa_defs.sv                    — códigos del ISA y parámetros (bundle, memorias)
+  instruction_memory.sv          — memoria de instrucciones (+IMEM=programa.mem)
+  memory.sv, pc_branch.sv        — memoria de datos y PC
+tb/                    testbenches de make sim (uno por módulo + integración)
+tests/                 pruebas del ensamblador y testbenches que usan las herramientas
 tools/                 scripts auxiliares
+  assembler.py, run_program.py   — ensamblador y ejecución de programas
   load_file.py, extract_data.py — carga/descarga de memoria
+examples/              programas de ejemplo (.asm) y archivos de prueba
 docs/                  documentación
   simulation.md                  — flujo de simulación (del equipo)
   mapa_memoria.md                — mapa de memoria 64 KB (Alejandro)
@@ -50,8 +55,9 @@ Los 5 testbenches asociados (`tb_lsu.sv`, `tb_bru.sv`,
 
 ### `load_file.py`
 
-Carga un archivo `.bin` o `.hex` en una imagen de memoria compatible
-con `$readmemh` de Verilog. Se usa para la memoria de datos de 32 bits.
+Carga un archivo de cualquier formato (texto, imágenes, binarios) en una
+imagen de memoria compatible con `$readmemh` de Verilog. Sólo los `.hex`
+se interpretan como texto hexadecimal. Se usa para la memoria de datos de 32 bits.
 Para la IMEM de bundles de 128 bits se usa `tools/assembler.py`.
 
 ```bash
@@ -114,8 +120,25 @@ make sim                # compila y ejecuta todos los testbenches de tb/ y muest
 make tb_alu             # ejecuta un solo testbench
 make waves TB=tb_alu    # abre en GTKWave el .vcd de ese testbench
 make list               # lista los testbenches
+make archivo            # cifra y descifra examples/archivos/mensaje.txt en el procesador
+make archivo ARCHIVO=foto.bmp   # lo mismo con cualquier archivo (hasta 65024 bytes)
 make clean              # borra build/
 ```
+
+Para ejecutar un programa `.asm` en el procesador se usa `tools/run_program.py`
+(ver [Ensamblador y pruebas de programas](#ensamblador-y-pruebas-de-programas-javier)):
+lo ensambla, lo carga en la memoria de instrucciones, lo simula y muestra los
+registros. Por ejemplo, con el programa que usa las 4 unidades:
+
+```bash
+python3 tools/run_program.py --input examples/mixto.asm --cycles 60
+```
+
+`make archivo` ensambla `examples/cifrar_archivo.asm` y `examples/descifrar_archivo.asm`,
+carga el archivo con `load_file.py`, lo cifra y lo descifra en el procesador
+(`tests/rtl/tb_archivo.sv`) y deja en `build/archivo/` el `cifrado.bin` y el
+`descifrado.bin` extraídos con `extract_data.py`. Termina con `[PASS]` si el
+descifrado es idéntico al original.
 
 Cada testbench genera su log y su `.vcd` en `build/<testbench>/`. Los testbenches autoverificables
 terminan con `[PASS]` o `[FAIL]`, y `make sim` falla si alguno falla o no compila.
@@ -138,16 +161,20 @@ python3 tools/run_program.py --input examples/lsu_isa.asm \
   --expect examples/lsu_isa.expected.json --expect-memory examples/lsu_isa.memory.json --cycles 80
 python3 tools/run_program.py --input examples/bru_isa.asm \
   --expect examples/bru_isa.expected.json --cycles 80
+python3 tools/run_program.py --input examples/mixto.asm --cycles 60
 ```
 
 El runner carga la IMEM, ejecuta `top` y compara registros/memoria.
-Deja logs, dumps y ondas en `build/program_<nombre>/`. Admite hasta 28 bundles
-para reservar el vaciado del pipeline. Los programas con saltos deben terminar
+Imprime los registros distintos de 0 y, con `--expect` (y `--expect-memory`),
+termina en error si algún valor no coincide. Para un programa propio basta
+escribir su `.asm` (sintaxis en [docs/assembler.md](docs/assembler.md)) y, si se
+quiere comprobar el resultado, un `.json` como `examples/alu_isa.expected.json`
+con los registros esperados (`{"x5": 50}`).
+Deja logs, dumps y ondas en `build/program_<nombre>/`. Admite hasta
+`IMEM_BUNDLES - 4` bundles (1020) para reservar el vaciado del pipeline. Los programas con saltos deben terminar
 en un bucle estable; `--cycles` fija el momento de comprobar el resultado.
 
-`examples/mixto.asm` incluye un bundle con ALU, LSU, BRU y cripto. El ensamblador
-lo acepta, pero el runner rechaza cripto hasta que esté conectada en `top`.
-Las pruebas de codificación pasan; **la ejecución de los programas todavía
-falla en la rama base `ba1b49e`**. Los fallos y los comandos para probar la
-salida real del generador CE1108 están en
+`examples/mixto.asm` incluye un bundle con ALU, LSU, BRU y cripto y usa las 6
+instrucciones cripto; `make test-programs` lo ejecuta. Los comandos para probar
+la salida real del generador CE1108 están en
 [docs/compiler-integration.md](docs/compiler-integration.md).
