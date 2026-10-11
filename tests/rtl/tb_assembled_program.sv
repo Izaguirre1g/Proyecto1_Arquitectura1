@@ -2,6 +2,8 @@
 
 // Adaptador de simulación para el ensamblador. Se carga la memoria existente
 // por jerarquía, como tb_regfile_pipeline, sin modificar top ni el RTL.
+`include "isa_defs.sv"
+
 module tb_assembled_program;
     logic clk = 0;
     logic reset = 1;
@@ -32,10 +34,10 @@ module tb_assembled_program;
         if (!$value$plusargs("MEMDUMP=%s", data_dump_path) ||
             !$value$plusargs("CYCLES=%d", cycles))
             $fatal(1, "[FAIL] faltan MEMDUMP o CYCLES");
-        // La memoria tiene 32 entradas. Se reservan 4 ciclos para completar
-        // FETCH -> IF/ID -> ID/EX -> EX/WB -> REGFILE antes de salir de ella.
-        if (bundles < 1 || bundles > 28)
-            $fatal(1, "[FAIL] esta prueba admite 1..28 bundles de programa");
+        // La memoria tiene IMEM_BUNDLES entradas. Se reservan 4 ciclos para
+        // completar IF -> ID -> EX -> WB -> REGFILE antes de salir de ella.
+        if (bundles < 1 || bundles > IMEM_BUNDLES - 4)
+            $fatal(1, "[FAIL] esta prueba admite 1..%0d bundles de programa", IMEM_BUNDLES - 4);
         if ($value$plusargs("VCD=%s", wave_path)) begin
             $dumpfile(wave_path);
             $dumpvars(0, tb_assembled_program);
@@ -43,7 +45,7 @@ module tb_assembled_program;
 
         // instruction_memory ejecuta su initial en t=0; cargar después.
         #1;
-        for (int i = 0; i < 32; i++) DUT.IMEM.memory[i] = 128'b0;
+        for (int i = 0; i < IMEM_BUNDLES; i++) DUT.IMEM.memory[i] = 128'b0;
         $readmemh(mem_path, DUT.IMEM.memory, 0, bundles - 1);
         for (int i = 0; i < bundles; i++)
             if ((^DUT.IMEM.memory[i]) === 1'bx)
