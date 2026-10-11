@@ -15,8 +15,8 @@
 #
 #  Uso
 # -----------------------------------------------------------------------------
-#  python tools/extract_data.py <input> --base 0x0 --size N [--output salida.bin]
-#           [--format bin|hex] [--little-endian]
+#  python3 tools/extract_data.py <input> --base 0x0 --size N [--output salida.bin]
+#           [--format bin|hex] [--mem-width 32|8]
 #
 #  Argumentos
 # -----------------------------------------------------------------------------
@@ -31,19 +31,17 @@
 #    --size <bytes>         Cantidad de bytes a extraer (default 64).
 #    --output <ruta>         Archivo de salida (default stdout en hex).
 #    --format bin|hex        Formato de salida (default hex).
-#    --little-endian        Cuando --format hex, emite 2 bytes por palabra
-#                           en little-endian (default: lo mismo).
 #    --mem-width 32|8       Ancho de los valores en el .mem de entrada.
 #                           Default 32 (palabras little-endian).
 #
 #  Ejemplos
 # ----------------------------------------------------------------------------
 #  1. Sacar 256 bytes a partir de 0x4000 del dump de memoria, en binario:
-#       python tools/extract_data.py build/data.mem --base 0x4000 --size 256
+#       python3 tools/extract_data.py build/data.mem --base 0x4000 --size 256
 #              --format bin --output out.bin
 #
 #  2. Sacar 16 bytes a partir de 0x0 en hexadecimal (stdout):
-#       python tools/extract_data.py build/data.mem --base 0x0 --size 16
+#       python3 tools/extract_data.py build/data.mem --base 0x0 --size 16
 #
 #  =============================================================================
 
