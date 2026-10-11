@@ -23,7 +23,8 @@ make test-assembler
 `.mem` contiene 32 dígitos hexadecimales por bundle, con CRIPTO en los bits
 altos y ALU en los bajos. Es el archivo para `$readmemh` en `IMEM.memory`.
 `.bin` conserva ese valor en 16 bytes little-endian por bundle. El listado
-muestra PC, línea fuente y slots. La IMEM actual admite 32 bundles.
+muestra PC, línea fuente y slots. La IMEM admite `IMEM_BUNDLES` bundles (1024,
+definido en `rtl/isa_defs.sv`); el último es el manejador de excepciones (`TRAP_VECTOR`).
 `load_file.py` genera palabras de 32 bits o bytes para memoria de datos;
 no se debe usar su salida de 32 bits directamente como bundles de IMEM.
 
