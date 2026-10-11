@@ -13,17 +13,18 @@
          4. mayoroigual (signed): rf1 >= rf2 (taken / not taken),
                                    rf1 = -1 >= rf2 = -2 (taken)
 
-     Parte 2 - jump (sye):
-         5. sye con offset positivo: target_pc y link_value = PC + 4
+     Parte 2 - jumps (sye y syer):
+         5. sye con offset positivo: siempre genera branch_flush (combinacional,
+            en el mismo ciclo); link_we_d se retrasa 1 ciclo, link_rd_d =
+            link_rd_in y link_value_d = PC + 16 (el bundle siguiente)
          6. sye con offset negativo
-         7. sye siempre genera branch_flush
-         8. link_we_d se retrasa 1 ciclo, link_rd_d = link_rd_in,
-            link_value_d = PC + 4
+         7. syer: target = (rf1 + offset) con los 4 bits bajos en 0, no depende
+            del PC ni de jmp_imm; offset positivo, negativo y destino
+            desalineado; link_value_d = PC + 16
 
      Parte 3 - casos negativos:
-         9. Slot BRU inactivo (is_branch=0, is_jump=0):
+         8. Slot BRU inactivo (is_branch=0, is_jump=0):
             branch_flush=0, target_pc = PC + 16 (default)
-        10. branch_flush es combinacional (se evalúa en el mismo ciclo)
 
 ================================================================================
 */
@@ -215,7 +216,7 @@ initial begin
 
 
     // =====================================================================
-    // Parte 2: jump (sye)
+    // Parte 2: jumps (sye y syer)
     // =====================================================================
 
     tb_section("5. sye: offset positivo");
@@ -235,7 +236,7 @@ initial begin
     tick;
     check_true("tras tick: link_we_d", dut_link_we_d === 1'b1);
     check      ("tras tick: link_rd_d", dut_link_rd_d, 5'd1);
-    check      ("tras tick: link_value_d = PC + 4", dut_link_value_d, pc_current + 32'd4);
+    check      ("tras tick: link_value_d = PC + 16", dut_link_value_d, pc_current + 32'd16);
 
 
     tb_section("6. sye: offset negativo");
@@ -246,13 +247,53 @@ initial begin
     check      ("sye target = PC - 256", dut_target_pc, pc_current - 32'sd256);
 
 
+    tb_section("7. syer: salto a la dirección de un registro");
+
+    pc_current = 32'h0000_8000;
+    rf1_data   = 32'h0000_1230;
+    br_imm     = 11'sd0;
+    jmp_imm    = 16'sd512;    // syer no usa jmp_imm
+    link_rd_in = 5'd5;
+    bru_op     = OP_SYER;
+    #1;
+    check_true("syer genera flush", dut_branch_flush === 1'b1);
+    check      ("syer x0, rf1, 0: target = rf1", dut_target_pc, 32'h0000_1230);
+
+    tick;
+    check_true("syer tras tick: link_we_d", dut_link_we_d === 1'b1);
+    check      ("syer tras tick: link_rd_d", dut_link_rd_d, 5'd5);
+    check      ("syer tras tick: link_value_d = PC + 16", dut_link_value_d, 32'h0000_8010);
+
+    br_imm = 11'sd32;
+    #1;
+    check      ("syer offset +32: target = rf1 + 32", dut_target_pc, 32'h0000_1250);
+
+    br_imm = -11'sd16;
+    #1;
+    check      ("syer offset -16: target = rf1 - 16", dut_target_pc, 32'h0000_1220);
+
+    pc_current = 32'h0000_9000;
+    #1;
+    check      ("syer: el target no depende del PC", dut_target_pc, 32'h0000_1220);
+
+    rf1_data = 32'h0000_1237;
+    br_imm   = 11'sd5;
+    #1;
+    check      ("syer desalineado: 0x1237 + 5 -> 0x1230", dut_target_pc, 32'h0000_1230);
+
+    rf1_data = 32'h0000_123F;
+    br_imm   = 11'sd1;
+    #1;
+    check      ("syer desalineado: 0x123F + 1 -> 0x1240", dut_target_pc, 32'h0000_1240);
+
+
     // =====================================================================
     // Parte 3: casos negativos / NOP
     // =====================================================================
 
-    tb_section("7. Slot inactivo (NOP)");
+    tb_section("8. Slot inactivo (NOP)");
 
-    // Resetear el DUT para limpiar el link_we_d que quedó en 1 desde el sye
+    // Resetear el DUT para limpiar el link_we_d que quedó en 1 desde el syer
     reset_dut();
 
     pc_current = 32'h0000_7000;

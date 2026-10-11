@@ -10,11 +10,13 @@
      2. igualno      → is_branch=1, we=0
      3. menora       → is_branch=1, we=0
      4. mayoroigual  → is_branch=1, we=0
-     5. sye          → is_jump=1, we=1, jmp_imm de 16 bits
-     6. Verificar extracción de rs1, rs2, br_imm en branches condicionales.
-     7. Verificar extracción de rd, jmp_imm en sye.
+     5. sye          → is_jump=1, we=1, rd y jmp_imm de 16 bits
+     6. sye con offset negativo
+     7. syer         → is_jump=1, we=1, rd [20:16], rs1 [15:11] y br_imm [10:0]
      8. Tipo que no es BRU → todo en 0.
      9. Barrido de IDs para TYPE_BRU_COND.
+    10. Barrido de IDs para TYPE_BRU_JUMP: sólo 0000 (sye) y 0001 (syer) son
+        saltos; los reservados quedan en NOP.
 
 ================================================================================
 */
@@ -84,6 +86,22 @@ function automatic logic [31:0] encode_sye(
         TYPE_BRU_JUMP,
         OP_SYE,
         rg,
+        offset
+    };
+endfunction
+
+
+// Helper: codifica syer
+function automatic logic [31:0] encode_syer(
+    input logic [4:0] rg,
+    input logic [4:0] _rs1,
+    input logic [10:0] offset
+);
+    return {
+        TYPE_BRU_JUMP,
+        OP_SYER,
+        rg,
+        _rs1,
         offset
     };
 endfunction
@@ -170,9 +188,32 @@ initial begin
 
 
     // =====================================================================
-    // 7. Tipo que no es BRU
+    // 7. syer
     // =====================================================================
-    tb_section("7. Tipo que no es BRU");
+    tb_section("7. syer");
+
+    instruction = encode_syer(5'd0, 5'd1, 11'sd0);     // ret = syer x0, ra, 0
+    #1;
+    check("syer (ret): bru_op", bru_op, OP_SYER);
+    check("syer (ret): rd = x0", rd, 5'd0);
+    check("syer (ret): rs1 = ra", rs1, 5'd1);
+    check("syer (ret): br_imm", br_imm, 11'd0);
+    check_true("syer (ret): is_jump", is_jump === 1'b1);
+    check_true("syer (ret): !is_branch", is_branch === 1'b0);
+    check_true("syer (ret): we = 1", we === 1'b1);
+
+    instruction = encode_syer(5'd7, 5'd20, -11'sd32);
+    #1;
+    check("syer: rd [20:16]", rd, 5'd7);
+    check("syer: rs1 [15:11]", rs1, 5'd20);
+    check("syer: br_imm (negativo, 11 bits)", br_imm, 11'h7E0);
+    check("syer: rs2 = 0", rs2, 5'd0);
+
+
+    // =====================================================================
+    // 8. Tipo que no es BRU
+    // =====================================================================
+    tb_section("8. Tipo que no es BRU");
 
     instruction = {
         TYPE_REG,
@@ -187,9 +228,9 @@ initial begin
 
 
     // =====================================================================
-    // 8. Barrido IDs TYPE_BRU_COND
+    // 9. Barrido IDs TYPE_BRU_COND
     // =====================================================================
-    tb_section("8. Barrido de los 16 IDs en TYPE_BRU_COND");
+    tb_section("9. Barrido de los 16 IDs en TYPE_BRU_COND");
 
     for (int i = 0; i < 16; i++) begin
 
@@ -197,6 +238,27 @@ initial begin
         #1;
         check_true($sformatf("ID=%0b: is_branch", i[3:0]), is_branch === 1'b1);
         check      ($sformatf("ID=%0b: bru_op", i[3:0]), bru_op, i[3:0]);
+    end
+
+
+    // =====================================================================
+    // 10. Barrido IDs TYPE_BRU_JUMP
+    // =====================================================================
+    tb_section("10. Barrido de los 16 IDs en TYPE_BRU_JUMP");
+
+    for (int i = 0; i < 16; i++) begin
+
+        instruction = {TYPE_BRU_JUMP, i[3:0], 5'd3, 16'h0040};
+        #1;
+        if (i < 2) begin
+            check_true($sformatf("ID=%0b: is_jump", i[3:0]), is_jump === 1'b1);
+            check_true($sformatf("ID=%0b: we", i[3:0]),      we === 1'b1);
+            check      ($sformatf("ID=%0b: bru_op", i[3:0]), bru_op, i[3:0]);
+        end
+        else begin
+            check_true($sformatf("ID=%0b reservado: NOP", i[3:0]),
+                       is_jump === 1'b0 && is_branch === 1'b0 && we === 1'b0 && rd === 5'd0);
+        end
     end
 
 

@@ -19,11 +19,16 @@
    B. Saltos: un salto no tomado no cuesta ciclos; uno tomado (igualno, sye,
       mayoroigual) anula exactamente los 2 bundles que lo siguen y el destino
       llega a EX 3 ciclos después del salto (penalización de 2 ciclos, sin
-      delay slots). sye escribe rg = PC + 4.
+      delay slots). sye escribe rg = PC + 16.
    C. Bundle mixto: ALU, LSU y BRU en el mismo bundle, y un bundle cuyo
       writeback escribe 3 registros en el mismo ciclo (ALU, carga y enlace
       de sye).
    D. Bucle hacia atrás (offset negativo) que se repite 3 veces.
+   E. Subrutinas: la misma función se llama dos veces con sye desde lugares
+      distintos y vuelve con syer x0, ra, 0 (ret) al bundle siguiente al de
+      cada llamada; syer con enlace y offset salta a rf1 + offset con los
+      4 bits bajos en 0. Las llamadas y los retornos anulan los 2 bundles
+      siguientes, como cualquier salto tomado.
 
  En todos los casos wb no debe reportar conflictos de escritura.
 
@@ -93,6 +98,13 @@ endfunction
 function automatic logic [31:0] sye(input logic [4:0] rg, input logic [15:0] off);
 
     return {TYPE_BRU_JUMP, OP_SYE, rg, off};
+endfunction
+
+// syer rg, rf1, off (bytes)
+function automatic logic [31:0] syer(input logic [4:0] rg, input logic [4:0] rf1,
+                                     input logic [10:0] off);
+
+    return {TYPE_BRU_JUMP, OP_SYER, rg, rf1, off};
 endfunction
 
 // Bundle: slot 0 ALU en los bits bajos, slot 3 CRIPTO en los altos
@@ -293,7 +305,7 @@ initial begin
     check("ALU en el bundle de igualno: x13 = 13",   reg_val(13), 32'd13);
     check("ALU en el bundle de sye: x14 = 14",       reg_val(14), 32'd14);
     check("ALU en el bundle de menora: x15 = 15",    reg_val(15), 32'd15);
-    check("sye x1: x1 = PC + 4 = 0xA4",              reg_val(1), 32'hA4);
+    check("sye x1: x1 = PC + 16 = 0xB0",             reg_val(1), 32'hB0);
 
     for(int r = 20; r <= 26; r++)
         check($sformatf("bundle anulado o saltado: x%0d = 0", r), reg_val(r), 32'd0);
@@ -319,7 +331,7 @@ initial begin
     prog[7]  = solo_alu(sumai(5'd7, 5'd0, 11'd2));                                  // anulado
     prog[8]  = bundle(sumai(5'd10, 5'd0, 11'd5),                                    // x10 = 5
                       lsu(OP_CARGAI, 5'd9, 5'd11, 11'd0),                           // x11 = M[0x200]
-                      sye(5'd12, 16'd48), NOP);                                     // x12 = PC+4, -> B11
+                      sye(5'd12, 16'd48), NOP);                                     // x12 = PC+16, -> B11
     prog[9]  = solo_alu(sumai(5'd7, 5'd0, 11'd3));                                  // anulado
     prog[10] = solo_alu(sumai(5'd7, 5'd0, 11'd4));                                  // anulado
     prog[11] = bundle(NOP, lsu(OP_CARGAI, 5'd5, 5'd8, 11'd0), NOP, NOP);            // x8 = M[0x40]
@@ -333,7 +345,7 @@ initial begin
     check("cargai después del salto: x8 = 9",              reg_val(8), 32'd9);
     check("ALU junto a cargai y sye: x10 = 5",             reg_val(10), 32'd5);
     check("cargai junto a ALU y sye: x11 = 0x12345678",    reg_val(11), 32'h1234_5678);
-    check("sye junto a ALU y cargai: x12 = 0x84",          reg_val(12), 32'h84);
+    check("sye junto a ALU y cargai: x12 = 0x90",          reg_val(12), 32'h90);
     check("wb escribió 3 registros en el mismo ciclo",     max_writes, 3);
     check("sin conflictos de writeback",                   conflicts, 0);
 
@@ -355,6 +367,50 @@ initial begin
     check("contador: x4 = 0",                      reg_val(4), 32'd0);
     check("el cuerpo se ejecutó 3 veces: x5 = 3",  reg_val(5), 32'd3);
     check("sin conflictos de writeback",           conflicts, 0);
+
+
+    // ========================================================================
+    // E. Subrutinas: llamada con sye y retorno con syer
+    // ========================================================================
+    tb_section("E. Llamada con sye y retorno con syer");
+
+    clear_prog();
+    prog[0]  = bundle(sumai(5'd5, 5'd0, 11'd5), NOP, sye(5'd1, 16'h100), NOP);     // x5 = 5; llama a F, ra = 0x10
+    prog[1]  = solo_alu(sumai(5'd7, 5'd0, 11'd1));                                  // vuelve aquí: x7 = 1
+    prog[2]  = bundle(NOP, NOP, sye(5'd1, 16'h0E0), NOP);                           // llama a F, ra = 0x30
+    prog[3]  = solo_alu(sumai(5'd8, 5'd0, 11'd2));                                  // vuelve aquí: x8 = 2
+    prog[4]  = solo_alu(sumai(5'd9, 5'd0, 11'h0C0));                                // x9 = 0xC0
+    prog[7]  = bundle(NOP, NOP, syer(5'd12, 5'd9, 11'd21), NOP);                    // x12 = 0x80; 0xC0 + 21 -> 0xD0
+    prog[8]  = solo_alu(sumai(5'd20, 5'd0, 11'd1));                                 // anulado
+    prog[9]  = solo_alu(sumai(5'd21, 5'd0, 11'd1));                                 // anulado
+    prog[13] = solo_alu(sumai(5'd13, 5'd0, 11'd13));                                // destino de syer: x13 = 13
+    prog[14] = bundle(NOP, NOP, sye(5'd0, 16'd0), NOP);                             // fin: bucle
+    prog[16] = solo_alu(sumai(5'd6, 5'd6, 11'd1));                                  // F: x6 cuenta las llamadas
+    prog[18] = bundle(NOP, NOP, syer(5'd0, 5'd1, 11'd0), NOP);                      // ret
+    prog[19] = solo_alu(sumai(5'd22, 5'd0, 11'd1));                                 // anulado
+    prog[20] = solo_alu(sumai(5'd23, 5'd0, 11'd1));                                 // anulado
+
+    run_program(60);
+
+    check("llamada: F entra a EX 3 ciclos después de B0",
+          first_ex(32'h100) - first_ex(32'h00), 32'd3);
+    check("retorno: B1 entra a EX 3 ciclos después del ret",
+          first_ex(32'h10) - first_ex(32'h120), 32'd3);
+    check("syer con offset: B13 entra a EX 3 ciclos después de B7",
+          first_ex(32'hD0) - first_ex(32'h70), 32'd3);
+
+    check("ALU en el bundle de la llamada: x5 = 5",       reg_val(5), 32'd5);
+    check("F se ejecutó 2 veces: x6 = 2",                 reg_val(6), 32'd2);
+    check("primer retorno al bundle 0x10: x7 = 1",        reg_val(7), 32'd1);
+    check("segundo retorno al bundle 0x30: x8 = 2",       reg_val(8), 32'd2);
+    check("enlace de la segunda llamada: ra = 0x30",      reg_val(1), 32'h30);
+    check("enlace de syer: x12 = PC + 16 = 0x80",         reg_val(12), 32'h80);
+    check("destino de syer alineado a 0xD0: x13 = 13",    reg_val(13), 32'd13);
+
+    for(int r = 20; r <= 23; r++)
+        check($sformatf("bundle anulado: x%0d = 0", r), reg_val(r), 32'd0);
+
+    check("sin conflictos de writeback",                  conflicts, 0);
 
 
     tb_finish("tb_pipeline_integracion");
