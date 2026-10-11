@@ -23,17 +23,19 @@
 `default_nettype none
 
 
+`include "isa_defs.sv"
+
 module pipeline_if_id(
 
     input  logic         clk,
     input  logic         reset,
 
-    input  logic [127:0] bundle_in,
+    input  logic [BUNDLE_W-1:0] bundle_in,
     input  logic [31:0]  pc_in,
     input  logic         valid_in,
     input  logic         flush_in,        // 1 = descartar este bundle (branch en EX)
 
-    output logic [127:0] bundle_out,
+    output logic [BUNDLE_W-1:0] bundle_out,
     output logic [31:0]  pc_out,
     output logic         valid_out
 
@@ -44,13 +46,13 @@ always @(posedge clk) begin
 
     if (reset) begin
 
-        bundle_out <= 128'b0;
+        bundle_out <= '0;
         pc_out     <= 32'b0;
         valid_out  <= 1'b0;
     end
     else begin
 
-        bundle_out <= flush_in ? 128'b0 : bundle_in;
+        bundle_out <= flush_in ? '0 : bundle_in;
         pc_out     <= flush_in ? 32'b0  : pc_in;
         valid_out  <= flush_in ? 1'b0   : valid_in;
     end
