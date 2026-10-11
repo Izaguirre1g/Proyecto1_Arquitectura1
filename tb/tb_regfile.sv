@@ -68,7 +68,7 @@ regfile DUT (
 );
 
 
-// Instancia con la configuración de id_stage (2 lecturas, 1 escritura)
+// Instancia con una configuración reducida (2 lecturas, 1 escritura)
 
 logic [1:0][4:0]  s_raddr;
 logic [1:0][31:0] s_rdata;
