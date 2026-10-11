@@ -8,7 +8,13 @@
  ------------------------------------------------------------------------------
  Verifica la unidad criptográfica (rtl/crypto_unit.sv, con su key_vault)
  conectada al puerto B de la memoria de datos (rtl/memory.sv). Las entradas se
- manejan como las entrega el registro ID/EX: una instrucción por ciclo.
+ manejan como las entrega el registro ID/EX.
+
+ La validación de privilegios se hace en ID (decoder_crypto, con su propio
+ testbench) y llega a la unidad como fault_in. Aquí la modela id_fault() con
+ el ESTADO actual de la unidad. ESTADO se escribe en WB, así que cada
+ instrucción se presenta en EX y el testbench espera también el flanco de WB
+ antes de la siguiente.
 
  Casos:
    1.  Reset: AUTH = 0, INIT = 1.
@@ -28,6 +34,8 @@
    10. camcon rota la contraseña de la bóveda y la palabra M[dir].
    11. Una instrucción con excepción no modifica llaves, memoria ni ESTADO.
    12. valid_in = 0 no hace nada, ni siquiera genera excepción.
+   14. ESTADO se escribe en WB: después del flanco de EX de vcr todavía no
+       cambió, y después del flanco de WB sí.
    13. Reset en medio de la ejecución: ESTADO vuelve a AUTH = 0, INIT = 1 y la
        bóveda queda en cero.
 
@@ -96,6 +104,7 @@ logic        clk;
 logic        reset;
 
 logic        valid_in;
+logic        fault_in;
 logic [3:0]  crypto_op;
 logic [1:0]  lk;
 logic [1:0]  rk;
@@ -123,6 +132,7 @@ crypto_unit DUT (
     .clk(clk),
     .reset(reset),
     .valid_in(valid_in),
+    .fault_in(fault_in),
     .crypto_op(crypto_op),
     .lk(lk),
     .rk(rk),
@@ -173,9 +183,25 @@ logic [3:0][31:0] keys [0:3];   // copia de lo que se carga en la bóveda
 logic             last_fault;   // priv_fault de la última instrucción
 integer           seed;
 
-// Ejecuta una instrucción: la presenta en el flanco negativo y vuelve en el
-// siguiente flanco negativo, cuando ESTADO, la bóveda, la memoria y las salidas
-// hacia wb ya se actualizaron.
+// Salidas hacia wb de la última instrucción (se capturan después de EX)
+logic             res_we;
+logic [4:0]       res_rd;
+logic [31:0]      res_l;
+logic [31:0]      res_r;
+
+// Validación de ID (la misma regla que decoder_crypto) con el ESTADO actual
+function automatic logic id_fault(input logic [3:0] op);
+
+    logic needs_auth;
+
+    needs_auth = (op == OP_FSL) || (op == OP_FSLI) || (op == OP_ELL) || (op == OP_CAMCON);
+    return (needs_auth && !estado[0]) || ((op == OP_SETPWD) && !estado[1]);
+endfunction
+
+// Ejecuta una instrucción: la presenta en EX en un flanco negativo, captura
+// las salidas hacia wb después del flanco de EX (cuando la bóveda y la memoria
+// ya se actualizaron) y vuelve después del flanco de WB, cuando ESTADO ya se
+// actualizó.
 task automatic issue(input logic [3:0] op, input logic [1:0] k, input logic [1:0] w,
                      input logic [4:0] dst, input logic [31:0] a, input logic [31:0] b,
                      input logic [15:0] dir, input logic [4:0] n);
@@ -190,10 +216,17 @@ task automatic issue(input logic [3:0] op, input logic [1:0] k, input logic [1:0
     operand_b = b;
     addr      = dir;
     imm       = n;
+    fault_in  = id_fault(op);
     #1;
     last_fault = priv_fault;
-    @(negedge clk);
+    @(negedge clk);                 // flanco de EX
     valid_in  = 1'b0;
+    fault_in  = 1'b0;
+    res_we    = wb_we;
+    res_rd    = wb_rd;
+    res_l     = wb_data_l;
+    res_r     = wb_data_r;
+    @(negedge clk);                 // flanco de WB
 endtask
 
 task automatic do_fsl(input logic [1:0] k, input logic [1:0] w,
@@ -242,7 +275,7 @@ task automatic encrypt_hw(input logic [1:0] k, input logic [63:0] in, output log
     for (int i = 0; i < 4; i++) begin
 
         do_fsl(k, i[1:0], out[63:32], out[31:0]);
-        out = {wb_data_l, wb_data_r};
+        out = {res_l, res_r};
     end
 endtask
 
@@ -252,7 +285,7 @@ task automatic decrypt_hw(input logic [1:0] k, input logic [63:0] in, output log
     for (int i = 3; i >= 0; i--) begin
 
         do_fsli(k, i[1:0], out[63:32], out[31:0]);
-        out = {wb_data_l, wb_data_r};
+        out = {res_l, res_r};
     end
 endtask
 
@@ -277,6 +310,11 @@ initial begin
     clk       = 0;
     reset     = 1;
     valid_in  = 0;
+    fault_in  = 0;
+    res_we    = 0;
+    res_rd    = 0;
+    res_l     = 0;
+    res_r     = 0;
     crypto_op = 0;
     lk        = 0;
     rk        = 0;
@@ -306,7 +344,7 @@ initial begin
     tb_section("1. Reset");
 
     check("ESTADO tras reset: INIT = 1, AUTH = 0", estado, 32'b10);
-    check("sin resultado hacia wb", wb_we, 1'b0);
+    check("sin resultado hacia wb", res_we, 1'b0);
 
 
     // ========================================================================
@@ -314,11 +352,11 @@ initial begin
 
     do_fsl(2'd0, 2'd0, 32'h1, 32'h2);
     check("fsl sin AUTH: excepción", last_fault, 1'b1);
-    check("fsl sin AUTH: no escribe registros", wb_we, 1'b0);
+    check("fsl sin AUTH: no escribe registros", res_we, 1'b0);
 
     do_fsli(2'd0, 2'd0, 32'h1, 32'h2);
     check("fsli sin AUTH: excepción", last_fault, 1'b1);
-    check("fsli sin AUTH: no escribe registros", wb_we, 1'b0);
+    check("fsli sin AUTH: no escribe registros", res_we, 1'b0);
 
     do_ell(2'd0, 2'd0, 32'hBAD0_0000, 32'hBAD0_0001);
     check("ell sin AUTH: excepción", last_fault, 1'b1);
@@ -382,10 +420,10 @@ initial begin
 
             exp = ref_round_enc(lr[63:32], lr[31:0], keys[0][i]);
             do_fsl(2'd0, i[1:0], lr[63:32], lr[31:0]);
-            check($sformatf("fsl ronda %0d: L", i + 1), wb_data_l, exp[63:32]);
-            check($sformatf("fsl ronda %0d: R", i + 1), wb_data_r, exp[31:0]);
-            check($sformatf("fsl ronda %0d: wb_we", i + 1), wb_we, 1'b1);
-            lr = {wb_data_l, wb_data_r};
+            check($sformatf("fsl ronda %0d: L", i + 1), res_l, exp[63:32]);
+            check($sformatf("fsl ronda %0d: R", i + 1), res_r, exp[31:0]);
+            check($sformatf("fsl ronda %0d: res_we", i + 1), res_we, 1'b1);
+            lr = {res_l, res_r};
         end
 
         check("cifrado HOLA2026: L = 03D44466 (vector conocido)", lr[63:32], 32'h03D4_4466);
@@ -433,18 +471,18 @@ initial begin
 
         e = ref_round_enc(l, r, keys[k][w]);
         do_fsl(k, w, l, r);
-        check("fsl aleatoria: L", wb_data_l, e[63:32]);
-        check("fsl aleatoria: R", wb_data_r, e[31:0]);
-        enc = {wb_data_l, wb_data_r};
+        check("fsl aleatoria: L", res_l, e[63:32]);
+        check("fsl aleatoria: R", res_r, e[31:0]);
+        enc = {res_l, res_r};
 
         e = ref_round_dec(l, r, keys[k][w]);
         do_fsli(k, w, l, r);
-        check("fsli aleatoria: L", wb_data_l, e[63:32]);
-        check("fsli aleatoria: R", wb_data_r, e[31:0]);
+        check("fsli aleatoria: L", res_l, e[63:32]);
+        check("fsli aleatoria: R", res_r, e[31:0]);
 
         do_fsli(k, w, enc[63:32], enc[31:0]);
-        check("fsli(fsl(x)) = x: L", wb_data_l, l);
-        check("fsli(fsl(x)) = x: R", wb_data_r, r);
+        check("fsli(fsl(x)) = x: L", res_l, l);
+        check("fsli(fsl(x)) = x: R", res_r, r);
     end
 
 
@@ -452,11 +490,11 @@ initial begin
     tb_section("9. Registro destino");
 
     issue(OP_FSL, 2'd0, 2'd0, 5'd20, 32'h1, 32'h2, 16'h0, 5'd0);
-    check("fsl rd = x20: wb_rd = 20", wb_rd, 5'd20);
+    check("fsl rd = x20: res_rd = 20", res_rd, 5'd20);
     issue(OP_FSLI, 2'd0, 2'd0, 5'd30, 32'h1, 32'h2, 16'h0, 5'd0);
-    check("fsli rd = x30: wb_rd = 30", wb_rd, 5'd30);
+    check("fsli rd = x30: res_rd = 30", res_rd, 5'd30);
     do_vcr(A_OK);
-    check("vcr no escribe registros", wb_we, 1'b0);
+    check("vcr no escribe registros", res_we, 1'b0);
 
 
     // ========================================================================
@@ -488,7 +526,7 @@ initial begin
         logic [63:0] prev;
 
         do_fsl(2'd1, 2'd2, 32'hAAAA_5555, 32'h1234_ABCD);
-        prev = {wb_data_l, wb_data_r};
+        prev = {res_l, res_r};
 
         do_vcr(16'h84);                             // AUTH = 0
         do_ell(2'd1, 2'd2, 32'hBAD, 32'hBAD);
@@ -502,8 +540,8 @@ initial begin
         check("la contraseña no rotó con la excepción: AUTH = 1", estado[0], 1'b1);
 
         do_fsl(2'd1, 2'd2, 32'hAAAA_5555, 32'h1234_ABCD);
-        check("ell con excepción no cambió la llave (L)", wb_data_l, prev[63:32]);
-        check("ell con excepción no cambió la llave (R)", wb_data_r, prev[31:0]);
+        check("ell con excepción no cambió la llave (L)", res_l, prev[63:32]);
+        check("ell con excepción no cambió la llave (R)", res_r, prev[31:0]);
     end
 
 
@@ -528,13 +566,15 @@ initial begin
     check("valid_in = 0: no hay resultado hacia wb", wb_we, 1'b0);
 
     do_fsl(2'd0, 2'd0, 32'h414C_4F48, 32'h3632_3032);
-    check("valid_in = 0: la llave 0 no cambió", wb_data_r, 32'hD22E_3A0C);
+    check("valid_in = 0: la llave 0 no cambió", res_r, 32'hD22E_3A0C);
 
     do_vcr(16'h84);                                 // AUTH = 0
     @(negedge clk);
     crypto_op = OP_FSL;
+    fault_in  = 1'b1;
     #1;
-    check("valid_in = 0 con AUTH = 0: sin excepción", priv_fault, 1'b0);
+    check("valid_in = 0 con fault_in = 1: sin excepción", priv_fault, 1'b0);
+    fault_in  = 1'b0;
 
 
     // ========================================================================
@@ -561,9 +601,36 @@ initial begin
         zero_key = '0;
         e = ref_round_enc(32'h414C_4F48, 32'h3632_3032, zero_key[0]);
         do_fsl(2'd0, 2'd0, 32'h414C_4F48, 32'h3632_3032);
-        check("reset: la bóveda quedó en cero (L)", wb_data_l, e[63:32]);
-        check("reset: la bóveda quedó en cero (R)", wb_data_r, e[31:0]);
+        check("reset: la bóveda quedó en cero (L)", res_l, e[63:32]);
+        check("reset: la bóveda quedó en cero (R)", res_r, e[31:0]);
     end
+
+
+    // ========================================================================
+    tb_section("14. ESTADO se escribe en WB");
+
+    MEM.mem[A_BAD >> 2] = 32'hFFFF_FFFF;    // candidata incorrecta
+
+    @(negedge clk);
+    valid_in  = 1'b1;
+    fault_in  = 1'b0;
+    crypto_op = OP_VCR;
+    addr      = A_BAD;
+    @(negedge clk);                          // flanco de EX
+    valid_in  = 1'b0;
+    check("vcr incorrecta: después de EX, AUTH sigue en 1", estado[0], 1'b1);
+    @(negedge clk);                          // flanco de WB
+    check("vcr incorrecta: después de WB, AUTH = 0", estado[0], 1'b0);
+
+    @(negedge clk);
+    valid_in  = 1'b1;
+    crypto_op = OP_VCR;
+    addr      = A_OK;
+    @(negedge clk);
+    valid_in  = 1'b0;
+    check("vcr correcta: después de EX, AUTH sigue en 0", estado[0], 1'b0);
+    @(negedge clk);
+    check("vcr correcta: después de WB, AUTH = 1", estado[0], 1'b1);
 
 
     tb_finish("tb_crypto_unit");
