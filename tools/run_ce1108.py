@@ -7,11 +7,11 @@ import sys
 if __package__:
     from .assembler import assemble_source
     from .bundle_linear import bundle_linear
-    from .run_program import ROOT, SimulationError, run_logged, tool
+    from .run_program import MAX_RUN_BUNDLES, ROOT, SimulationError, run_logged, tool
 else:
     from assembler import assemble_source
     from bundle_linear import bundle_linear
-    from run_program import ROOT, SimulationError, run_logged, tool
+    from run_program import MAX_RUN_BUNDLES, ROOT, SimulationError, run_logged, tool
 
 
 def main():
@@ -26,8 +26,8 @@ def main():
             raise SimulationError('la entrada no puede ser una salida de esta prueba')
         source = bundle_linear(args.input.read_text(encoding='utf-8'))
         program = assemble_source(source)
-        if len(program.bundles) > 28:
-            raise SimulationError('la prueba admite hasta 28 bundles')
+        if len(program.bundles) > MAX_RUN_BUNDLES:
+            raise SimulationError(f'la prueba admite hasta {MAX_RUN_BUNDLES} bundles')
         work.mkdir(parents=True, exist_ok=True)
         asm, mem, listing, binary, executable, compile_log, sim_log = outputs
         asm.write_text(source, encoding='utf-8')
