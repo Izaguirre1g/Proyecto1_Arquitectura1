@@ -32,16 +32,23 @@
 
      Reset: AUTH = 0, INIT = 1, y la bóveda se borra.
 
+     Como en el diagrama de organización del grupo, ESTADO se escribe en WB:
+     vcr y setpwd calculan su efecto en EX y lo aplican al final de WB. La
+     salida estado va a decoder_crypto, que valida en ID las instrucciones
+     privilegiadas. Por eso ESTADO sigue la misma regla que los registros: lo
+     que escribe el bundle N lo ve en ID el bundle N + 3.
+
  Control de acceso (ISA, "Restricción de uso por instrucción"):
  ------------------------------------------------------------------------------
      fsl, fsli, ell, camcon   requieren AUTH = 1
      setpwd                   requiere INIT = 1
      vcr                      siempre permitida (es la vía de autenticación)
 
-     Si no se cumple, priv_fault = 1 en EX y la instrucción no tiene ningún
-     efecto: no escribe registros, ni la bóveda, ni la memoria, ni ESTADO.
-     top usa priv_fault para anular el bundle completo y saltar al
-     manejador de excepciones.
+     La validación se hace en ID (decoder_crypto, con el ESTADO de ese ciclo)
+     y llega aquí por ID/EX como fault_in. Si la instrucción no tenía permiso,
+     priv_fault = 1 en EX y la instrucción no tiene ningún efecto: no escribe
+     registros, ni la bóveda, ni la memoria, ni ESTADO. top usa priv_fault
+     para anular el bundle completo y saltar al manejador de excepciones.
 
  Conexión con el pipeline:
  ------------------------------------------------------------------------------
@@ -54,10 +61,14 @@
      - El resultado de fsl/fsli se registra aquí, igual que hace la LSU con
        las cargas, para llegar a wb un ciclo después de EX junto con los
        resultados de la ALU. wb escribe L_out en rd y R_out en rd + 1.
-     - La bóveda, ESTADO y la memoria se actualizan al final de EX: la
-       instrucción cripto del bundle siguiente ya ve el cambio (por ejemplo,
-       ell seguida de fsl, o vcr seguida de fsl). Los registros siguen la
-       regla general: el par escrito por fsl lo lee el bundle N + 3.
+     - La bóveda y la memoria se actualizan al final de EX (en el diagrama la
+       bóveda está junto a la unidad criptográfica, en EX): la instrucción
+       cripto del bundle siguiente ya ve el cambio (por ejemplo, ell seguida
+       de fsl, o setpwd seguida de vcr).
+     - ESTADO se actualiza al final de WB: vcr y setpwd afectan desde el
+       bundle N + 3 (por ejemplo, vcr y luego ell o fsl 3 bundles después).
+     - Los registros siguen la regla general: el par escrito por fsl lo lee
+       el bundle N + 3.
 
 ================================================================================
 */
@@ -72,6 +83,7 @@ module crypto_unit(
 
     // Entradas desde ID/EX
     input  logic         valid_in,      // el slot 3 trae una instrucción cripto válida
+    input  logic         fault_in,      // la validación de ID la rechazó (sin permiso)
     input  logic [3:0]   crypto_op,     // OP_FSL ... OP_SETPWD
     input  logic [1:0]   lk,            // llave
     input  logic [1:0]   rk,            // subllave (fsl/fsli) u offset (ell)
@@ -94,8 +106,8 @@ module crypto_unit(
     output logic [31:0]  wb_data_r,     // -> rd + 1
 
     // Control de acceso
-    output logic         priv_fault,    // instrucción privilegiada sin permiso (combinacional)
-    output logic [31:0]  estado         // ESTADO, sólo para observación en simulación
+    output logic         priv_fault,    // instrucción privilegiada sin permiso, en EX
+    output logic [31:0]  estado         // ESTADO: va a la validación de ID (decoder_crypto)
 );
 
 
@@ -122,14 +134,11 @@ logic init;     // ESTADO[1]
 
 assign estado = {30'b0, init, auth};
 
-logic needs_auth;
 logic exec;     // la instrucción es válida y tiene permiso: produce efectos
 
-assign needs_auth = is_fsl || is_fsli || is_ell || is_camcon;
+assign priv_fault = valid_in && fault_in;
 
-assign priv_fault = valid_in && ((needs_auth && !auth) || (is_setpwd && !init));
-
-assign exec = valid_in && !priv_fault;
+assign exec = valid_in && !fault_in;
 
 
 // ============================================================================
@@ -211,7 +220,7 @@ assign mem_wdata = rol32(mem_rdata, imm);
 
 
 // ============================================================================
-// Registros: ESTADO y resultado de la ronda hacia wb
+// Registros: resultado de la ronda hacia wb y ESTADO (que se escribe en WB)
 // ============================================================================
 
 logic        result_we_d;
@@ -219,12 +228,20 @@ logic [4:0]  result_rd_d;
 logic [31:0] result_l_d;
 logic [31:0] result_r_d;
 
+// Cambio de ESTADO calculado en EX, pendiente de escribirse al final de WB
+logic        auth_we_d;     // vcr
+logic        auth_d;        // resultado de la comparación de vcr
+logic        init_clr_d;    // setpwd
+
 always @(posedge clk) begin
 
     if (reset) begin
 
         auth        <= 1'b0;
         init        <= 1'b1;
+        auth_we_d   <= 1'b0;
+        auth_d      <= 1'b0;
+        init_clr_d  <= 1'b0;
         result_we_d <= 1'b0;
         result_rd_d <= 5'd0;
         result_l_d  <= 32'd0;
@@ -232,12 +249,19 @@ always @(posedge clk) begin
     end
     else begin
 
-        // vcr: AUTH = 1 si la candidata coincide con la contraseña; si no, 0
-        if (exec && is_vcr)
-            auth <= pwd_match;
+        // Final de EX: vcr compara la candidata con la contraseña y setpwd
+        // pide cerrar el provisionamiento
+        auth_we_d  <= exec && is_vcr;
+        auth_d     <= pwd_match;
+        init_clr_d <= exec && is_setpwd;
+
+        // Final de WB: se escribe ESTADO
+        // vcr: AUTH = 1 si la candidata coincidió con la contraseña; si no, 0
+        if (auth_we_d)
+            auth <= auth_d;
 
         // setpwd cierra el provisionamiento
-        if (exec && is_setpwd)
+        if (init_clr_d)
             init <= 1'b0;
 
         result_we_d <= exec && (is_fsl || is_fsli);
