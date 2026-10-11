@@ -467,7 +467,7 @@ Los bits `AUTH` e `INIT` **no son accesibles** mediante instrucciones de carga/a
 | `camcon` | Requiere `AUTH = 1`. | Excepción (sin rotar la contraseña) |
 | `fsl`, `fsli` | Requieren `AUTH = 1`. | Excepción (sin consumir subllave) |
 
-Cualquier intento de ejecutar una instrucción privilegiada sin cumplir su condición de acceso genera una **excepción de privilegio** (trap de seguridad). La excepción detiene la ejecución del bundle actual y transfiere el control a una dirección de manejo a definir en la microarquitectura.
+Cualquier intento de ejecutar una instrucción privilegiada sin cumplir su condición de acceso genera una **excepción de privilegio** (trap de seguridad). La excepción detiene la ejecución del bundle actual y transfiere el control a una dirección de manejo a definir en la microarquitectura. En la implementación actual esa dirección es `TRAP_VECTOR` = 0x3FF0, el último bundle de la memoria de instrucciones; el bundle que provoca la excepción se anula completo, igual que los 2 que lo siguen en el pipeline.
 
 #### Flujo de autenticación típico
 
@@ -1083,7 +1083,7 @@ Las resuelve el ensamblador
 | `x4–x15` | t0–t11 | Temporales (no se preservan entre llamadas). |
 | `x16–x31` | s0–s15 | Preservados entre llamadas (el llamado los guarda si los usa). |
 
-**gp**: base fija de la zona de datos (p. ej. 0x4000), inicializado una vez al arrancar. Importa porque cargai/guardap sólo tienen 11 bits de desplazamiento (±1 KB): con gp como base, cualquier dato global se alcanza en una sola instrucción (`cargai x8, gp, 16`) en vez de construir la dirección con calta + cbaja en dos bundles. Lo usan las instrucciones de carga y almacenamiento (`cargai`, `cargabai`, `guardap`, `guardab`) como registro base rf1.
+**gp**: base fija de la zona de datos (p. ej. 0x4000), inicializado una vez al arrancar. Importa porque cargai/guardap sólo tienen 11 bits de desplazamiento (±1 KB): con gp como base, cualquier dato global se alcanza en una sola instrucción (`cargai x8, gp, 16`) en vez de construir la dirección con varias instrucciones (el ISA no tiene una instrucción para cargar constantes de más de 11 bits). Lo usan las instrucciones de carga y almacenamiento (`cargai`, `cargabai`, `guardap`, `guardab`) como registro base rf1.
 
 ## Resumen de la arquitectura
 
