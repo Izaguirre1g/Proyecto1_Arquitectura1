@@ -24,6 +24,17 @@
  latencia de 1 ciclo entre EX y WB que la ALU, simplificando la integración en
  un pipeline VLIW sin forwarding.
 
+ Puertos:
+     A  LSU (slot 1): lectura y escritura con byte enables.
+     B  unidad criptográfica (slot 3): lectura y escritura de palabra
+        completa, para vcr (lee la contraseña candidata) y camcon (rota la
+        palabra en M[dir]). Con dos puertos, una instrucción cripto puede ir
+        en el mismo bundle que una de la LSU.
+     Las entradas del puerto B valen 0 por defecto, así que un testbench que
+     sólo use el puerto A no necesita conectarlas.
+     Si los dos puertos escriben la misma palabra en el mismo ciclo, gana el
+     puerto B. Es un error de calendarización del software.
+
  Tamaño: el parámetro SIZE_WORDS permite reducir el tamaño para testbenches;
  por defecto se mantienen los 16 384 palabras (= 64 KB) del enunciado.
 
@@ -44,13 +55,20 @@ module memory #(
     input  logic [31:0]  addr,          // dirección byte-addressable
     input  logic [31:0]  wdata,         // dato a escribir
 
-    output logic [31:0]  rdata          // dato leído (combinacional)
+    output logic [31:0]  rdata,         // dato leído (combinacional)
+
+    // Puerto B (unidad criptográfica), palabra completa
+    input  logic         we_b    = 1'b0,
+    input  logic [31:0]  addr_b  = 32'b0,
+    input  logic [31:0]  wdata_b = 32'b0,
+    output logic [31:0]  rdata_b
 );
 
 
 logic [31:0] mem [0:SIZE_WORDS-1];
 
 logic [$clog2(SIZE_WORDS)-1:0] word_addr;
+logic [$clog2(SIZE_WORDS)-1:0] word_addr_b;
 
 // Inicialización explícita (compatible con Icarus 12)
 generate
@@ -62,7 +80,8 @@ endgenerate
 
 
 // Selección de palabra: divide la dirección byte-addressable por 4
-assign word_addr = addr[$clog2(SIZE_WORDS)+1:2];
+assign word_addr   = addr[$clog2(SIZE_WORDS)+1:2];
+assign word_addr_b = addr_b[$clog2(SIZE_WORDS)+1:2];
 
 
 // ------------------------------------------------------------------
@@ -78,13 +97,18 @@ always @(posedge clk) begin
         if (be[2]) mem[word_addr][23:16] <= wdata[23:16];
         if (be[3]) mem[word_addr][31:24] <= wdata[31:24];
     end
+
+    // Puerto B después del A: si escriben la misma palabra, gana B
+    if (we_b)
+        mem[word_addr_b] <= wdata_b;
 end
 
 
 // ------------------------------------------------------------------
 // Lectura combinacional (little-endian).
 // ------------------------------------------------------------------
-assign rdata = mem[word_addr];
+assign rdata   = mem[word_addr];
+assign rdata_b = mem[word_addr_b];
 
 
 endmodule
