@@ -195,3 +195,10 @@ test-ce1108-source: check-tools
 	@test -n "$(CE1108_ROOT)" || { echo "Indique CE1108_ROOT=<repositorio_compiladores>"; exit 1; }
 	CE1108_ROOT="$(CE1108_ROOT)" IVERILOG=$(IVERILOG) VVP=$(VVP) \
 	    python3 -m unittest discover -s tests -p 'test_ce1108_source.py' -v
+
+.PHONY: compiladores-factorial test-compiladores-funciones
+compiladores-factorial:
+	IVERILOG=$(IVERILOG) VVP=$(VVP) python3 tools/run_ce1108_source.py --functions --compiler-root "$(CE1108_ROOT)" --input "$(CE1108_ROOT)/examples/factorial.bal" --expect-memory examples/compiladores_factorial.memory.json --cycles 20000
+
+test-compiladores-funciones:
+	CE1108_ROOT="$(CE1108_ROOT)" IVERILOG=$(IVERILOG) VVP=$(VVP) python3 -m unittest discover -s tests -p 'test_compiler_functions.py' -v

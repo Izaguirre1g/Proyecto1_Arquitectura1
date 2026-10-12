@@ -192,3 +192,39 @@ literales detectables. Para valores recibidos por variables, el código se
 detiene en un salto estable sin escribir el resultado. Las pruebas negativas
 verifican que se conserva el destino anterior y no se ejecuta lo que sigue;
 eso no representa terminación normal del programa.
+
+## Factorial con el generador de funciones
+
+El modo `--functions` usa el analizador semántico, el asignador de memoria,
+el adaptador de referencias y los generadores de funciones y control de
+Compiladores. Requiere una copia que combine `feat/division-residuo` y
+`feature/Ensamblador-ciclos-funciones`, con la multiplicación compacta.
+Admite una sola main void sin parámetros; no integra módulos externos ni
+llamadas a otras funciones. La CLI de producción de Compiladores se integra
+por separado.
+
+```bash
+make compiladores-factorial CE1108_ROOT="../Proyecto-Parte-1-Compiladores-e-Interpretes-Definici-n-de-Sintaxis-de-Lenguaje"
+make test-compiladores-funciones CE1108_ROOT="../Proyecto-Parte-1-Compiladores-e-Interpretes-Definici-n-de-Sintaxis-de-Lenguaje"
+```
+
+El código generado inicializa gp=0x4000 y sp=0x8000. `sye x1` llama a main y
+fija ra; el prólogo lo guarda y el epílogo restaura ra/sp antes de retornar con
+`syer`. Después del retorno, el arranque escribe 1 en 0x4000, dirección
+reservada como señal de terminación de esta prueba. Si el programa queda
+detenido por una operación inválida, esa señal no se escribe y la prueba falla.
+
+El factorial usa un marco de 16 bytes: n queda en 0x7ff4, resultado en 0x7ff8 e
+i en 0x7ffc. La RAM conserva esas palabras después de liberar el marco, lo que
+permite comprobar el resultado. Se verifican también gp, sp y ra restaurados.
+5! produce 120 y ocupa 163 bundles; 0!, 1!, 7! y 12! producen 1, 1, 5040 y
+479001600. Los valores se inicializan por instrucciones, sin precarga del
+banco de registros ni de la RAM del testbench.
+
+El adaptador acepta retornos indirectos y transforma condiciones fuera del
+rango de 11 bits en una condición inversa corta seguida de `sye x0` al destino.
+Recalcula el layout hasta que todos los saltos condicionales caben. El
+ensamblador conserva sus validaciones de rango, memoria y dependencias.
+El modo lineal original sigue disponible. Si no se especifica `--cycles`,
+los programas con bucles aritméticos internos o `--functions` reciben un
+presupuesto de 100000 ciclos; los programas lineales mantienen el anterior.
