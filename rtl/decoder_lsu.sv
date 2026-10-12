@@ -66,7 +66,7 @@ always @(*) begin
             // Formato: tipo (7) | id (4) | rf1 (5) | rf2 (5) | offset (11)
             //   - guardap / guardab: rf2 = dato a escribir
             //   - cargai / cargabai: rd = destino, rf1 = base, rf2 no se usa
-            // (Ver ISA_Proyecto.md, "Instrucciones tipo almacenar".)
+            // (Ver docs/isa.md, "Instrucciones tipo almacenar".)
 
             rs1 = instruction[20:16];
             rs2 = instruction[15:11];
