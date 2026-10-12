@@ -1,0 +1,104 @@
+# Integración con CE1108
+
+Este documento describe la integración evaluada en Arquitectura CE4301.
+El proyecto de Compiladores CE1108 tiene su propio enunciado y entregables.
+El ensamblador de Arquitectura funciona de forma independiente del compilador,
+como exige la sección 5.3 del enunciado de CE4301.
+
+## Contrato de entrada
+
+La codificación y el ABI están en [isa.md](isa.md);
+la sintaxis completa está en [assembler.md](assembler.md).
+
+- Bundle de 128 bits y avance de PC de 16 bytes.
+- Orden del fuente: `ALU | LSU | BRU | CRIPTO`. ALU ocupa los bits bajos.
+- NOP: palabra cero en cualquier slot; una línea `nop` ocupa el bundle completo.
+- Registros: x0 constante cero, x1/ra, x2/sp y x3/gp. Temporales x4–x15;
+  preservados x16–x31. La preservación corresponde al código generado.
+- Un valor escrito en el bundle N se lee desde N+3. El software coloca dos
+  bundles independientes o NOP entre productor y consumidor.
+- `sye` y `syer` guardan PC+16. `ret` equivale a `syer x0, ra, 0`.
+  Los saltos relativos se expresan en bytes desde el PC del bundle.
+- `.mem`: una línea de 32 dígitos hexadecimales por bundle para IMEM.
+  `.bin`: 16 bytes little-endian por bundle.
+
+La referencia debe compartirse con CE1108 junto con los cambios de codificación,
+ABI y calendarización. Estar en el repositorio permite consultarla; la entrega
+al grupo de contraparte debe quedar registrada en el issue #20.
+
+## Subconjunto integrado
+
+El módulo `generacion_basica.c` emite instrucciones ALU y accesos
+`cargai/guardap`, utilizando temporales x4–x7 y referencias suministradas por
+un resolvedor. `bundle_linear.py` conserva el orden, coloca cada instrucción
+en ALU o LSU e inserta dos bundles NOP entre instrucciones. No acepta etiquetas,
+control ni cripto; esa limitación pertenece al adaptador lineal, no al ensamblador,
+que sí codifica las 34 instrucciones actuales.
+
+El chequeo estático del ensamblador revisa dependencias entre registros. No
+verifica la disponibilidad de AUTH. Los programas cripto deben planificar sus
+operaciones según los tiempos descritos en [simulation.md](simulation.md).
+El RTL comprueba los permisos y genera una excepción ante un acceso indebido.
+
+## Reproducir la prueba de CE1108
+
+En el repositorio del compilador, rama `feat/generacion-basica`:
+
+```bash
+make tests/test_generacion
+./tests/test_generacion --ejemplo > ejemplo.linear
+```
+
+Copiar `ejemplo.linear` a la raíz de Arquitectura y ejecutar:
+
+```bash
+python3 tools/run_ce1108.py --input ejemplo.linear
+```
+
+El comando adapta las instrucciones, genera `.asm`, `.mem`, `.bin` y `.lst`,
+carga la memoria de instrucciones y ejecuta `top` con Icarus Verilog.
+Los archivos y logs quedan en `build/ce1108/`. Un resultado incorrecto
+termina con código distinto de cero.
+
+También puede repetirse con la copia de referencia:
+
+```bash
+python3 tools/run_ce1108.py --input examples/ce1108.linear
+```
+
+Esa copia procede del
+[commit 4f225a0 de CE1108](https://github.com/Izaguirre1g/Proyecto-Parte-1-Compiladores-e-Interpretes-Definici-n-de-Sintaxis-de-Lenguaje/commit/4f225a0f34bac7adf9934181ebc8d0772589b242).
+Genera 6 instrucciones y 16 bundles para `r : (a gauss b) neumann 1;`.
+El testbench inicializa gp=0x4000, a=8 y b=3; comprueba r=10 en 0x4008 y
+que a y b se conserven. Este caso verifica una expresión emitida por el módulo;
+no representa la compilación de un programa completo mediante la CLI.
+
+## Resultados reproducidos
+
+Pruebas confirmadas en Ubuntu con Icarus Verilog 12.0, el 11 de octubre de
+2026, sobre la integración `42b05d4` de `fix-Pipeline-Integracion`:
+
+| Comando | Resultado |
+|---|---|
+| `make test-assembler` | 38 pruebas correctas (21 + 13 + 4); cobertura de las 34 instrucciones |
+| `make test-programs` | 14 pruebas correctas; programas tradicionales, mixto y subrutinas |
+| `make tb_regfile_pipeline` | 10 verificaciones correctas de dependencias entre registros |
+| `make tb_pipeline_cripto` | 71 verificaciones correctas de cifrado, descifrado, permisos y aislamiento |
+| `make sim` | 21 PASS, 0 FAIL, 0 NO-COMPILA, 0 SIN-CHEQUEO |
+| `python3 tools/run_ce1108.py --input ejemplo.linear` | PASS: (8 + 3) - 1 = 10 |
+
+Las excepciones de privilegio mostradas por los casos negativos de
+`tb_pipeline_cripto` son esperadas. Incluyen `ell` a dos bundles de `vcr`,
+antes de que el estado esté disponible. `$finish` indica terminación normal.
+
+## Pendientes de integración
+
+- Registrar la entrega del contrato actualizado al grupo de CE1108.
+- Completar la demostración desde un archivo fuente de CE1108 hasta la
+  ejecución en el procesador, conservando fuente, comandos, código generado
+  y resultado esperado. El caso actual demuestra el subconjunto de expresiones.
+
+La sección 6.2 de CE4301 exige ejecutar al menos un programa generado por la
+contraparte y verificar su resultado. No impone expresamente que esa
+demostración tenga estructuras de control; los requisitos completos del
+compilador corresponden al enunciado de CE1108.
