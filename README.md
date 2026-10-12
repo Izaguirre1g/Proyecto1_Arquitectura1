@@ -69,14 +69,14 @@ Para la IMEM de bundles de 128 bits se usa `tools/assembler.py`.
 
 ```bash
 # Cargar datos a partir de la dirección 0x0
-python3 tools/load_file.py --input datos.bin --output build/datos.mem --address 0x0
+python3 tools/load_file.py --input datos.bin --address 0x0 --output build/datos.mem
 
 # Cargar datos pre-inicializados en el segmento de datos (gp = 0x4000)
-python3 tools/load_file.py --input datos.hex --output build/data.mem --address 0x4000
+python3 tools/load_file.py --input datos.hex --address 0x4000 --output build/data.mem
 
 # Imagen completa de 64 KB con un byte por línea (no sirve para memory.sv,
 # que lee palabras de 32 bits)
-python3 tools/load_file.py --input imagen.bin --output build/imagen.mem --size 65536 --word-width 8
+python3 tools/load_file.py --input imagen.bin --output build/imagen.mem --address 0x0 --size 65536 --word-width 8
 ```
 
 Luego, en el testbench (como hace `tests/rtl/tb_archivo.sv`; la ruta es relativa a
@@ -212,3 +212,23 @@ En Ubuntu con Icarus Verilog 12.0 se confirmaron el 11 de octubre de 2026:
 correctas) y `make sim` (21 PASS, sin fallos ni testbenches sin comprobación).
 El contrato, los pasos para regenerar la entrada con CE1108 y el alcance de
 la evidencia están en [docs/compiler-integration.md](docs/compiler-integration.md).
+
+
+### Programa de CE1108 desde fuente
+
+Para ejecutar `examples/ce1108_programa.bal` desde su fuente, usando los módulos
+del repositorio de Compiladores en `feat-analisis-semantico`:
+
+```bash
+sudo apt install build-essential flex uthash-dev
+make ce1108-source CE1108_ROOT="../Proyecto-Parte-1-Compiladores-e-Interpretes-Definici-n-de-Sintaxis-de-Lenguaje"
+make test-ce1108-source CE1108_ROOT="../Proyecto-Parte-1-Compiladores-e-Interpretes-Definici-n-de-Sintaxis-de-Lenguaje"
+```
+
+El programa inicializa gp y las variables, genera binario y se ejecuta sobre
+el RTL. Debe terminar con PASS: a=8, b=3, r=10 y valido=1 en memoria.
+Fuente, código generado, logs, evidencia y ondas quedan en `build/ce1108_fuente/`.
+La prueba admite una función main lineal con declaraciones y asignaciones;
+los límites se explican en `docs/compiler-integration.md`. Ajusta CE1108_ROOT
+si tu copia de Compiladores tiene otra carpeta. Esta herramienta no modifica
+los módulos ni la CLI del repositorio de Compiladores.

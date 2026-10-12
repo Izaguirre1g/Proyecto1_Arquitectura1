@@ -170,7 +170,7 @@ archivo: check-tools
 	@mkdir -p $(ARCHIVO_DIR)
 	python3 tools/assembler.py --input examples/cifrar_archivo.asm --output $(ARCHIVO_DIR)/cifrar.mem
 	python3 tools/assembler.py --input examples/descifrar_archivo.asm --output $(ARCHIVO_DIR)/descifrar.mem
-	python3 tools/load_file.py --input "$(ARCHIVO)" --output $(ARCHIVO_DIR)/datos.mem --address 0x200
+	python3 tools/load_file.py --input "$(ARCHIVO)" --address 0x200 --output $(ARCHIVO_DIR)/datos.mem
 	$(IVERILOG) $(IVFLAGS) -s tb_archivo -o $(ARCHIVO_DIR)/sim.vvp $(RTL_SRCS) tests/rtl/tb_archivo.sv
 	@set -o pipefail; n=$$(wc -c < "$(ARCHIVO)"); \
 	( cd $(ARCHIVO_DIR) && $(VVP) $(VVPFLAGS) sim.vvp +CIFRAR=cifrar.mem +DESCIFRAR=descifrar.mem \
@@ -181,3 +181,16 @@ archivo: check-tools
 	    --format bin --output $(ARCHIVO_DIR)/descifrado.bin && \
 	cmp "$(ARCHIVO)" $(ARCHIVO_DIR)/descifrado.bin && \
 	echo "[PASS] $(ARCHIVO): descifrado.bin es idéntico al original ($$n bytes)"
+
+# Programa fuente de CE1108 usando sus módulos externos.
+CE1108_ROOT ?=
+.PHONY: ce1108-source test-ce1108-source
+ce1108-source: check-tools
+	@test -n "$(CE1108_ROOT)" || { echo "Use make ce1108-source CE1108_ROOT=<repositorio_compiladores>"; exit 1; }
+	IVERILOG=$(IVERILOG) VVP=$(VVP) python3 tools/run_ce1108_source.py --compiler-root "$(CE1108_ROOT)" \
+	    --input examples/ce1108_programa.bal --expect-memory examples/ce1108_programa.memory.json
+
+test-ce1108-source: check-tools
+	@test -n "$(CE1108_ROOT)" || { echo "Indique CE1108_ROOT=<repositorio_compiladores>"; exit 1; }
+	CE1108_ROOT="$(CE1108_ROOT)" IVERILOG=$(IVERILOG) VVP=$(VVP) \
+	    python3 -m unittest discover -s tests -p 'test_ce1108_source.py' -v
