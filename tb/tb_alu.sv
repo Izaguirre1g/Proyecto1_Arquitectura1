@@ -25,7 +25,7 @@
  Parte 2 - Instrucciones ALU del ISA a través del decoder:
    Cada una de las 18 instrucciones ALU del ISA (10 tipo registro y 8 tipo
    inmediato), además de los pseudo mov y not, se codifica con los valores
-   binarios de ISA_Proyecto.md y pasa por decoder_alu, la lectura del banco de
+   binarios de docs/isa.md y pasa por decoder_alu, la lectura del banco de
    registros y la selección del segundo operando con el inmediato extendido
    con signo (lo mismo que hace top entre ID y EX), y luego por la ALU. Se
    verifican el código de operación, el registro destino, el uso de inmediato
