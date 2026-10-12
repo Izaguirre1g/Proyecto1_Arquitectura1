@@ -111,7 +111,7 @@ python3 tools/extract_data.py build/data.mem --base 0x0 --size 16
 En Ubuntu o WSL:
 
 ```bash
-sudo apt install iverilog gtkwave make
+sudo apt install python3 iverilog gtkwave make
 ```
 
 En Windows (winget):
@@ -191,3 +191,24 @@ con `sye` y vuelve con `syer`; `make test-programs` ejecuta estos y los demás
 ejemplos sobre el RTL. Los comandos para probar
 la salida real del generador CE1108 están en
 [docs/compiler-integration.md](docs/compiler-integration.md).
+
+## Integración con CE1108 y resultados
+
+El ensamblador de Arquitectura es autónomo; no requiere el compilador para
+probar instrucciones ni ejecutar los programas de `examples/`.
+La prueba del generador de CE1108 puede reproducirse con:
+
+```bash
+python3 tools/run_ce1108.py --input examples/ce1108.linear
+```
+
+Resultado: `[PASS] expresión CE1108: (8 + 3) - 1 = 10`. Se generan ensamblador,
+binario, hexadecimal, listado y logs en `build/ce1108/`. El testbench inicializa
+los datos de entrada: esta prueba corresponde a una expresión del generador,
+no a un programa completo compilado mediante la CLI.
+
+En Ubuntu con Icarus Verilog 12.0 se confirmaron el 11 de octubre de 2026:
+`make test-assembler` (38 pruebas correctas), `make test-programs` (14 pruebas
+correctas) y `make sim` (21 PASS, sin fallos ni testbenches sin comprobación).
+El contrato, los pasos para regenerar la entrada con CE1108 y el alcance de
+la evidencia están en [docs/compiler-integration.md](docs/compiler-integration.md).
