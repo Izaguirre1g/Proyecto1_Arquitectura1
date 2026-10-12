@@ -69,14 +69,14 @@ Para la IMEM de bundles de 128 bits se usa `tools/assembler.py`.
 
 ```bash
 # Cargar datos a partir de la dirección 0x0
-python3 tools/load_file.py datos.bin --base 0x0 --output build/datos.mem
+python3 tools/load_file.py --input datos.bin --output build/datos.mem --address 0x0
 
 # Cargar datos pre-inicializados en el segmento de datos (gp = 0x4000)
-python3 tools/load_file.py datos.hex --base 0x4000 --output build/data.mem
+python3 tools/load_file.py --input datos.hex --output build/data.mem --address 0x4000
 
 # Imagen completa de 64 KB con un byte por línea (no sirve para memory.sv,
 # que lee palabras de 32 bits)
-python3 tools/load_file.py imagen.bin --size 65536 --word-width 8
+python3 tools/load_file.py --input imagen.bin --output build/imagen.mem --size 65536 --word-width 8
 ```
 
 Luego, en el testbench (como hace `tests/rtl/tb_archivo.sv`; la ruta es relativa a
@@ -93,11 +93,11 @@ cifrado) en formato `.bin` o `.hex`.
 
 ```bash
 # 256 bytes a partir de 0x4000, en binario
-python3 tools/extract_data.py build/data.mem --base 0x4000 --size 256 \
+python3 tools/extract_data.py --memory build/data.mem --address 0x4000 --size 256 \
        --format bin --output out.bin
 
 # Hex por stdout (default)
-python3 tools/extract_data.py build/data.mem --base 0x0 --size 16
+python3 tools/extract_data.py --memory build/data.mem --address 0x0 --size 16
 ```
 
 ## Simulación

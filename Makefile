@@ -170,14 +170,14 @@ archivo: check-tools
 	@mkdir -p $(ARCHIVO_DIR)
 	python3 tools/assembler.py --input examples/cifrar_archivo.asm --output $(ARCHIVO_DIR)/cifrar.mem
 	python3 tools/assembler.py --input examples/descifrar_archivo.asm --output $(ARCHIVO_DIR)/descifrar.mem
-	python3 tools/load_file.py "$(ARCHIVO)" --base 0x200 --output $(ARCHIVO_DIR)/datos.mem
+	python3 tools/load_file.py --input "$(ARCHIVO)" --output $(ARCHIVO_DIR)/datos.mem --address 0x200
 	$(IVERILOG) $(IVFLAGS) -s tb_archivo -o $(ARCHIVO_DIR)/sim.vvp $(RTL_SRCS) tests/rtl/tb_archivo.sv
 	@set -o pipefail; n=$$(wc -c < "$(ARCHIVO)"); \
 	( cd $(ARCHIVO_DIR) && $(VVP) $(VVPFLAGS) sim.vvp +CIFRAR=cifrar.mem +DESCIFRAR=descifrar.mem \
 	    +DATOS=datos.mem +BYTES=$$n $(PLUSARGS) 2>&1 | tee sim.log ) && \
-	python3 tools/extract_data.py $(ARCHIVO_DIR)/cifrado.mem --base 0x200 --size $$(( (n + 7) / 8 * 8 )) \
+	python3 tools/extract_data.py --memory $(ARCHIVO_DIR)/cifrado.mem --address 0x200 --size $$(( (n + 7) / 8 * 8 )) \
 	    --format bin --output $(ARCHIVO_DIR)/cifrado.bin && \
-	python3 tools/extract_data.py $(ARCHIVO_DIR)/descifrado.mem --base 0x200 --size $$n \
+	python3 tools/extract_data.py --memory $(ARCHIVO_DIR)/descifrado.mem --address 0x200 --size $$n \
 	    --format bin --output $(ARCHIVO_DIR)/descifrado.bin && \
 	cmp "$(ARCHIVO)" $(ARCHIVO_DIR)/descifrado.bin && \
 	echo "[PASS] $(ARCHIVO): descifrado.bin es idéntico al original ($$n bytes)"

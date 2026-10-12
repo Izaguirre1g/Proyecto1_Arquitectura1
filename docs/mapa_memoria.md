@@ -115,8 +115,8 @@ dirección `0x1000` de la memoria de datos:
 ```
 
 ```
-python3 tools/load_file.py datos.hex --base 0x1000 --size 65536 \
-       --output build/datos.mem
+python3 tools/load_file.py --input datos.hex --output build/datos.mem \
+       --address 0x1000 --size 65536
 ```
 
 En un `.hex`, un valor menor o igual a `0xFF` se toma como un solo byte y

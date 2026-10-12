@@ -11,7 +11,7 @@
 
      tools/assembler.py   examples/cifrar_archivo.asm    -> cifrar.mem
      tools/assembler.py   examples/descifrar_archivo.asm -> descifrar.mem
-     tools/load_file.py   <archivo> --base 0x200         -> datos.mem
+     tools/load_file.py   --input <archivo> --address 0x200 -> datos.mem
 
  Pasos:
    1. Carga datos.mem en la memoria de datos y escribe en 0x100..0x11F la
