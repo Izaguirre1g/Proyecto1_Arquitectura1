@@ -407,7 +407,7 @@ en el mismo ciclo, gana `camcon`; es un error de calendarización.
 ### Decisiones de diseño a validar con el grupo
 
 - `camcon` rota la contraseña de la bóveda y también la copia en M[dir]. Así la siguiente `vcr` con
-  esa copia sigue autenticando. Así quedó descrito en `ISA_Proyecto.md`.
+  esa copia sigue autenticando. Así quedó descrito en [isa.md](isa.md).
 - El reset borra la bóveda y vuelve a INIT = 1, lo que permite un nuevo `setpwd` después de cada
   reset; las llaves anteriores no se pueden recuperar.
 - La memoria de datos pasó a tener dos puertos (A para la LSU, B para la cripto).
