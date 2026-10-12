@@ -11,23 +11,24 @@
 #
 #  Uso
 # -----------------------------------------------------------------------------
-#  python3 tools/load_file.py <input> [--base 0x0] [--output salida.mem] [--size 65536]
+#  python3 tools/load_file.py --input archivo --output memory.mem --address 0x1000
+#                              [--size 65536] [--word-width 32]
 #
 #  Argumentos
 # -----------------------------------------------------------------------------
-#    <input>                Ruta al archivo de entrada. Si termina en .hex se
+#    --input <ruta>         Ruta al archivo de entrada. Si termina en .hex se
 #                           interpreta como texto hex (un valor por línea o
 #                           separados por espacios/comas). Cualquier otro archivo
 #                           (texto, imágenes, binarios) se carga tal cual, byte
-#                           por byte.
-#    --base <addr>          Dirección base donde comienza la carga (default 0x0).
+#                           por byte. (Requerido)
+#    --output <ruta>        Ruta del .mem a producir. (Requerido)
+#    --address <addr>       Dirección base donde comienza la carga (default 0x0).
 #                           Los bytes del archivo se escriben desde esta
 #                           dirección en forma ascendente.
-#    --output <ruta>         Ruta del .mem a producir (default <input>.mem).
 #    --size <bytes>         Tamaño total de la imagen de memoria (default 65536).
 #                           El archivo .mem se rellena con ceros hasta este
 #                           tamaño para que $readmemh no lea basura.
-#    --word-width            32 (palabras de 32 bits little-endian, una por línea
+#    --word-width           32 (palabras de 32 bits little-endian, una por línea
 #                           en el .mem) o 8 (un byte por línea). Default 32.
 #
 #  Formato .mem generado
@@ -41,14 +42,18 @@
 #  Ejemplos
 # ----------------------------------------------------------------------------
 #  1. Cargar un archivo en la dirección 0x200 de la memoria de datos:
-#       python3 tools/load_file.py mensaje.txt --base 0x200 --output build/datos.mem
+#       python3 tools/load_file.py --input mensaje.txt --address 0x200 \
+#                                     --output build/datos.mem
 #
 #  2. Cargar un archivo hex a partir de 0x4000 (datos):
-#       python3 tools/load_file.py datos.hex --base 0x4000 --output build/data.mem
+#       python3 tools/load_file.py --input datos.hex --address 0x4000 \
+#                                     --output build/data.mem
 #
 #  3. Generar imagen completa de 16 KB con un byte por línea (no sirve para
 #     memory.sv, que lee palabras de 32 bits):
-#       python3 tools/load_file.py imagen.bin --size 16384 --word-width 8
+#       python3 tools/load_file.py --input imagen.bin --address 0x0 \
+#                                     --output build/imagen.mem \
+#                                     --size 16384 --word-width 8
 #
 # =============================================================================
 
@@ -173,30 +178,35 @@ def write_mem(image, output_path, size, word_width):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Carga un archivo binario o hexadecimal a un .mem Verilog"
+        description="Carga un archivo al .mem Verilog usado por la memoria de datos"
     )
-    parser.add_argument("input", help="Archivo de entrada (cualquier formato; .hex = texto hexadecimal)")
-    parser.add_argument("--base", default="0x0",
-                        help="Dirección base de carga (default 0x0)")
-    parser.add_argument("--output", default=None,
-                        help="Ruta del .mem a generar (default <input>.mem)")
+    # Interfaz de la especificacion del proyecto (Sec. 5.4.3):
+    # ./load_file.py --input archivo.txt --output memory.mem --address 0x1000
+    parser.add_argument("--input", required=True,
+                        help="Ruta al archivo de entrada (.hex = texto hex; "
+                             "cualquier otro = binario byte por byte)")
+    parser.add_argument("--output", required=True,
+                        help="Ruta del .mem a generar (compatible con "
+                             "$readmemh)")
+    parser.add_argument("--address", default="0x0",
+                        help="Direccion base de carga (default 0x0)")
     parser.add_argument("--size", type=int, default=65536,
-                        help="Tamaño total de la imagen (default 65536)")
+                        help="Tamano total de la imagen de memoria "
+                             "(default 65536)")
     parser.add_argument("--word-width", type=int, default=32,
-                        help="Ancho en bits por línea del .mem (8 o 32)")
+                        help="Ancho en bits por linea del .mem (default 32)")
     args = parser.parse_args()
 
-    base = int(args.base, 0)
-    output = args.output if args.output else os.path.splitext(args.input)[0] + ".mem"
+    address = int(args.address, 0)
 
-    image, size = load_file(args.input, base=base, size=args.size,
+    image, size = load_file(args.input, base=address, size=args.size,
                             word_width=args.word_width)
 
-    os.makedirs(os.path.dirname(os.path.abspath(output)) or ".", exist_ok=True)
-    write_mem(image, output, size, args.word_width)
+    os.makedirs(os.path.dirname(os.path.abspath(args.output)) or ".", exist_ok=True)
+    write_mem(image, args.output, size, args.word_width)
 
-    print(f"[load_file] {len(image)} bytes cargados en {output} "
-          f"(base=0x{base:x}, tamaño=0x{size:x})")
+    print(f"[load_file] {len(image)} bytes cargados en {args.output} "
+          f"(address=0x{address:x}, tamano=0x{size:x})")
 
 
 if __name__ == "__main__":

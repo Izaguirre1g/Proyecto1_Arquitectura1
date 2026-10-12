@@ -15,33 +15,35 @@
 #
 #  Uso
 # -----------------------------------------------------------------------------
-#  python3 tools/extract_data.py <input> --base 0x0 --size N [--output salida.bin]
-#           [--format bin|hex] [--mem-width 32|8]
+#  python3 tools/extract_data.py --memory <file> --address 0x0 --size N
+#                                  --output <file>  [--format bin|hex]
+#                                  [--mem-width 32|8]
 #
 #  Argumentos
 # -----------------------------------------------------------------------------
-#    <input>                Ruta al archivo .mem o .hex de donde extraer.
+#    --memory <ruta>        Ruta al archivo .mem o .hex de donde extraer.
 #                           - Si termina en .mem se interpreta como archivo
 #                               compatible con $readmemh (palabras de 32 bits
 #                               little-endian, una por línea) o bytes (un
 #                               byte por línea).
 #                           - En cualquier otro caso se interpreta como texto
-#                               hexadecimal libre.
-#    --base <addr>          Dirección inicial (default 0x0).
+#                               hexadecimal libre. (Requerido)
+#    --address <addr>       Direccion inicial (default 0x0).
 #    --size <bytes>         Cantidad de bytes a extraer (default 64).
-#    --output <ruta>         Archivo de salida (default stdout en hex).
-#    --format bin|hex        Formato de salida (default hex).
+#    --output <ruta>        Archivo de salida (default stdout en hex).
+#    --format bin|hex       Formato de salida (default hex).
 #    --mem-width 32|8       Ancho de los valores en el .mem de entrada.
 #                           Default 32 (palabras little-endian).
 #
 #  Ejemplos
 # ----------------------------------------------------------------------------
 #  1. Sacar 256 bytes a partir de 0x4000 del dump de memoria, en binario:
-#       python3 tools/extract_data.py build/data.mem --base 0x4000 --size 256
-#              --format bin --output out.bin
+#       python3 tools/extract_data.py --memory build/data.mem --address 0x4000 \
+#              --size 256 --format bin --output out.bin
 #
 #  2. Sacar 16 bytes a partir de 0x0 en hexadecimal (stdout):
-#       python3 tools/extract_data.py build/data.mem --base 0x0 --size 16
+#       python3 tools/extract_data.py --memory build/data.mem --address 0x0 \
+#              --size 16
 #
 #  =============================================================================
 
@@ -88,44 +90,48 @@ def main():
     parser = argparse.ArgumentParser(
         description="Extrae un rango de memoria y lo convierte a binario o hex"
     )
-    parser.add_argument("input", help="Archivo .mem de entrada")
-    parser.add_argument("--base", default="0x0",
-                        help="Dirección inicial (default 0x0)")
+    # Interfaz de la especificacion del proyecto (Sec. 5.4.3):
+    # ./extract_data.py --memory memory_dump.txt --address 0x1000 --size 4096
+    #                     --output resultado.bin
+    parser.add_argument("--memory", required=True,
+                        help="Ruta al archivo .mem / dump de entrada")
+    parser.add_argument("--address", default="0x0",
+                        help="Direccion inicial (default 0x0)")
     parser.add_argument("--size", type=int, default=64,
                         help="Cantidad de bytes a extraer (default 64)")
     parser.add_argument("--output", default=None,
-                        help="Archivo de salida (default stdout)")
+                        help="Archivo de salida (default stdout en hex)")
     parser.add_argument("--format", default="hex", choices=["hex", "bin"],
                         help="Formato de salida (default hex)")
     parser.add_argument("--mem-width", type=int, default=32, choices=[8, 32],
                         help="Ancho de los valores en el .mem (default 32)")
     args = parser.parse_args()
 
-    base = int(args.base, 0)
-    if base < 0:
-        sys.stderr.write("[extract_data] ERROR: --base debe ser >= 0\n")
+    address = int(args.address, 0)
+    if address < 0:
+        sys.stderr.write("[extract_data] ERROR: --address debe ser >= 0\n")
         sys.exit(1)
 
     # 1) Leer el archivo de entrada
     if args.mem_width == 32:
-        words = parse_mem_words(args.input)
+        words = parse_mem_words(args.memory)
         bytes_mem = bytearray()
         for word in words:
             for shift in (0, 8, 16, 24):
                 bytes_mem.append((word >> shift) & 0xFF)
     else:
-        bytes_mem = bytearray(parse_mem_bytes(args.input))
+        bytes_mem = bytearray(parse_mem_bytes(args.memory))
 
     # 2) Sacar el rango pedido
-    if base >= len(bytes_mem):
+    if address >= len(bytes_mem):
         sys.stderr.write(
-            f"[extract_data] WARNING: la base 0x{base:x} está fuera del archivo "
-            f"(tamaño {len(bytes_mem)} bytes)\n"
+            f"[extract_data] WARNING: la direccion 0x{address:x} esta fuera del archivo "
+            f"(tamano {len(bytes_mem)} bytes)\n"
         )
         extracted = bytearray()
     else:
-        end = min(base + args.size, len(bytes_mem))
-        extracted = bytes_mem[base:end]
+        end = min(address + args.size, len(bytes_mem))
+        extracted = bytes_mem[address:end]
 
     # 3) Emitir
     if args.format == "bin":
