@@ -1,0 +1,7 @@
+Proyecto Grupal I - CE4301 Arquitectura de Computadores I
+Procesador VLIW propio con unidad criptográfica Feistel4.
+
+Este archivo de ejemplo se carga en la memoria de datos con load_file.py,
+el procesador lo cifra bloque por bloque (8 bytes, 4 rondas fsl) usando la
+llave guardada en la bóveda, después lo descifra con 4 rondas fsli y el
+resultado se compara con este mismo archivo.

@@ -1,3 +1,5 @@
+# Productos de simulación (make sim)
 build/
-tests/
-tools/
+*.vcd
+*.vvp
+__pycache__/

@@ -1,0 +1,455 @@
+# Simulación
+
+Este documento describe cómo se simula el procesador VLIW, el formato estándar de los testbenches y
+el modelo del banco de registros, del writeback, de la ALU y de la unidad criptográfica.
+
+## Contenido
+
+1. [Herramientas](#1-herramientas)
+2. [Estructura del repositorio](#2-estructura-del-repositorio)
+3. [Cómo ejecutar las simulaciones](#3-cómo-ejecutar-las-simulaciones)
+4. [Flujo de compilación](#4-flujo-de-compilación)
+5. [Formato estándar de testbench](#5-formato-estándar-de-testbench)
+6. [Banco de registros (`regfile`)](#6-banco-de-registros-regfile)
+7. [Writeback (`wb`)](#7-writeback-wb)
+8. [ALU (`alu`)](#8-alu-alu)
+9. [Unidad criptográfica (`crypto_unit`, `key_vault`)](#9-unidad-criptográfica-crypto_unit-key_vault)
+10. [Testbenches y cobertura](#10-testbenches-y-cobertura)
+11. [Pendientes](#11-pendientes)
+
+## 1. Herramientas
+
+| Herramienta | Versión probada | Uso |
+|:---|:---|:---|
+| Icarus Verilog (`iverilog`, `vvp`) | 12.0 | Simulador del proyecto (SystemVerilog con `-g2012`). |
+| GTKWave | 3.3.116 | Visualización de los `.vcd`. |
+| GNU make | 4.3 | `make sim` y un target por testbench. |
+| bash | 5 | Shell que usa el Makefile. |
+
+Instalación en Ubuntu o WSL:
+
+```bash
+sudo apt install iverilog gtkwave make
+```
+
+El proyecto usa sólo Icarus Verilog; el grupo decidió no usar Verilator.
+
+## 2. Estructura del repositorio
+
+```
+rtl/                 módulos SystemVerilog del procesador
+tb/                  testbenches de make sim (tb_<modulo>.sv) y tb_utils.svh
+tests/               pruebas del ensamblador (Python) y testbenches que usan las
+  rtl/               herramientas: tb_archivo.sv (make archivo), tb_assembled_program.sv
+                     (run_program.py) y tb_ce1108_program.sv (run_ce1108.py)
+tools/               ensamblador, ejecución de programas, adaptador de CE1108 y
+                     herramientas de carga y extracción de memoria
+examples/            programas .asm y archivos de prueba
+docs/                documentación (este archivo)
+build/               generado por make (.gitignore)
+  <testbench>/
+    sim.vvp          ejecutable de Icarus
+    compile.log      salida de iverilog (sólo con make sim)
+    sim.log          salida de la simulación
+    *.vcd            ondas para GTKWave
+Makefile
+```
+
+## 3. Cómo ejecutar las simulaciones
+
+Desde la raíz del repositorio:
+
+| Comando | Qué hace |
+|:---|:---|
+| `make sim` | Compila y ejecuta todos los `tb/tb_*.sv` y muestra un resumen. |
+| `make tb_alu` | Compila (sólo si cambió algo) y ejecuta un testbench, mostrando su salida. |
+| `make waves TB=tb_alu` | Abre en GTKWave el `.vcd` de ese testbench. |
+| `make list` | Lista los testbenches disponibles. |
+| `python3 tools/run_program.py --input examples/mixto.asm --cycles 60` | Ensambla un programa `.asm`, lo ejecuta en `top` y muestra los registros (con `--expect` los compara). |
+| `make archivo ARCHIVO=<ruta>` | Cifra y descifra un archivo en el procesador (ver abajo). |
+| `make test-assembler`, `make test-programs` | Pruebas del ensamblador y de programas `.asm` sobre el RTL. |
+| `make clean` | Borra `build/`. |
+| `make help` | Muestra la ayuda. |
+
+
+Ejemplo de salida de `make sim`:
+
+```
+Simulando 21 testbenches con Icarus Verilog version 12.0 (stable) ()
+  PASS         tb_alu
+  PASS         tb_bru
+  PASS         tb_crypto_unit
+  ...
+  PASS         tb_pipeline_cripto
+  ...
+  PASS         tb_top
+  PASS         tb_wb
+Resumen: 21 PASS, 0 FAIL, 0 NO-COMPILA, 0 SIN-CHEQUEO
+Logs y ondas en build/<testbench>/
+```
+
+Estados posibles:
+
+| Estado | Significado |
+|:---|:---|
+| `PASS` | El testbench imprimió `[PASS]` y terminó con código 0. |
+| `FAIL` | Imprimió `[FAIL]` o terminó con código distinto de 0 (por ejemplo, por `$fatal`). |
+| `SIN-CHEQUEO` | Corrió sin errores, pero no se autoverifica: hay que revisar su salida a mano. |
+| `NO-COMPILA` | Error de compilación; el detalle queda en `build/<tb>/compile.log`. |
+
+`make sim` termina con código distinto de 0 si algún testbench queda en `FAIL` o `NO-COMPILA`.
+
+### Programas y memoria de instrucciones
+
+La memoria de instrucciones tiene `IMEM_BUNDLES` = 1024 bundles (16 KB). Empieza llena de NOP y,
+si se indica `+IMEM=<archivo.mem>`, carga ese programa con `$readmemh`: una línea por bundle, 32
+dígitos hexadecimales, con el slot CRIPTO en los bits altos y el ALU en los bajos (el formato de
+`tools/assembler.py`). Los testbenches también pueden escribir `DUT.IMEM.memory[]` por jerarquía.
+
+Para correr un programa propio se usa `tools/run_program.py`, que lo ensambla, lo carga y lo
+simula (ver el README). `+IMEM` sirve al ejecutar `vvp` directamente con un testbench que no cargue
+su propio programa (los de `make sim` sí cargan el suyo y lo reemplazarían). La ruta es relativa
+al directorio donde corre `vvp` (con el Makefile, `build/<testbench>/`), así que conviene darla
+completa: `+IMEM=$PWD/build/programa.mem`.
+
+### Cifrado de un archivo (`make archivo`)
+
+```bash
+make archivo                          # usa examples/archivos/mensaje.txt
+make archivo ARCHIVO=imagen.bmp       # cualquier archivo de hasta 65024 bytes
+```
+
+1. `tools/assembler.py` ensambla `examples/cifrar_archivo.asm` y `examples/descifrar_archivo.asm`.
+2. `tools/load_file.py` carga el archivo en la memoria de datos desde `0x200`.
+3. `tests/rtl/tb_archivo.sv` escribe la contraseña, la llave y la dirección de fin en
+   `0x100`–`0x11F`, ejecuta el programa de cifrado, guarda la memoria en `cifrado.mem`
+   (`$writememh`), aplica reset, ejecuta el de descifrado y guarda `descifrado.mem`. Verifica que
+   no haya excepciones, que el cifrado cambie el archivo, que no se toque memoria fuera de él y
+   que el descifrado sea idéntico al original.
+4. `tools/extract_data.py` saca `cifrado.bin` y `descifrado.bin`, y `descifrado.bin` se compara
+   con el archivo original.
+
+Todo queda en `build/archivo/`. Cada bloque de 8 bytes tarda 20 ciclos (4 rondas, más las
+esperas de la regla N+3 y los 2 ciclos del salto del bucle).
+
+## 4. Flujo de compilación
+
+Para cada testbench, el Makefile ejecuta:
+
+```bash
+iverilog -g2012 -Wall -Wno-timescale -I rtl -I tb -s tb_x -o build/tb_x/sim.vvp rtl/*.sv tb/tb_x.sv
+cd build/tb_x && vvp -n sim.vvp
+```
+
+- Todos los módulos de `rtl/` se compilan juntos con cada testbench. Agregar un módulo nuevo en
+  `rtl/` o un testbench nuevo `tb/tb_*.sv` no requiere tocar el Makefile.
+- `-s tb_x` fija el testbench como módulo superior, así que los módulos que no se usan no afectan.
+- `-I rtl -I tb` resuelve los `` `include `` de `isa_defs.sv` y `tb_utils.svh`. `isa_defs.sv` tiene
+  guardas `` `ifndef ``, por lo que incluirlo en varios archivos no lo duplica.
+- `-Wno-timescale` evita una advertencia por cada módulo sin `` `timescale ``. El RTL no usa retardos,
+  así que la unidad de tiempo sólo importa en los testbenches, que declaran `` `timescale 1ns/1ps ``.
+- `vvp` corre dentro de `build/tb_x/`, de modo que el `.vcd` que abra el testbench queda ahí y no en
+  la raíz del repositorio.
+- `-n` hace que un `$stop` termine la simulación en lugar de quedarse esperando en modo interactivo.
+
+## 5. Formato estándar de testbench
+
+Todos los testbenches nuevos deben seguir este formato para que `make sim` pueda decidir solo si
+pasaron.
+
+1. Archivo `tb/tb_<modulo>.sv` con un módulo del mismo nombre.
+2. `` `timescale 1ns/1ps `` en la primera línea.
+3. Encabezado con la descripción y la lista de casos que cubre.
+4. `` `include "tb_utils.svh" `` dentro del módulo.
+5. `$dumpfile("tb_<modulo>.vcd")` y `$dumpvars(0, tb_<modulo>)` al inicio.
+6. El estímulo cambia en el flanco negativo y el diseño captura en el positivo, para evitar
+   carreras entre el testbench y el RTL.
+7. Cada resultado se verifica con `check` o `check_true`. Un `$display` solo no detecta errores.
+8. Los vectores aleatorios usan `$random(seed)` con una semilla configurable por `+seed=N`.
+9. El testbench termina con `tb_finish("tb_<modulo>")`.
+
+Utilidades de `tb/tb_utils.svh`:
+
+| Elemento | Descripción |
+|:---|:---|
+| `check(nombre, obtenido, esperado)` | Compara hasta 32 bits con `!==`, así que un `X` o `Z` también es fallo. Imprime `[FAIL]` con ambos valores. |
+| `check_true(nombre, condicion)` | Verifica que la condición sea 1. |
+| `tb_section(nombre)` | Imprime el encabezado de un grupo de pruebas. |
+| `tb_finish(nombre)` | Imprime `[PASS] nombre: N verificaciones` y llama a `$finish`, o `[FAIL] ...` y llama a `$fatal` (código de salida 1). |
+| `tb_checks`, `tb_errors` | Contadores. |
+| Watchdog | Si la simulación supera `` `TB_TIMEOUT `` (1 000 000 unidades de tiempo por defecto), termina con `[FAIL]`. Se cambia definiendo la macro antes del `` `include ``. |
+
+### Parámetros de la organización
+
+`rtl/isa_defs.sv` define las constantes que usan los módulos en lugar de números fijos:
+
+| Parámetro | Valor | Uso |
+|:---|:---|:---|
+| `NUM_SLOTS`, `SLOT_W` | 4, 32 | Slots por bundle y bits por slot (`dispatch`). |
+| `BUNDLE_W`, `BUNDLE_BYTES` | 128, 16 | Ancho del bundle (`fetch`, `pipeline_if_id`, `top`), avance del PC (`pc_branch`) y enlace de `sye` y `syer` (`bru`). |
+| `IMEM_BUNDLES` | 1024 | Tamaño de la memoria de instrucciones; también lo leen las herramientas de Python. |
+| `DMEM_BYTES` | 65536 | Tamaño de la memoria de datos. |
+| `TRAP_VECTOR` | `0x3FF0` | Manejador de excepciones: el último bundle de la memoria de instrucciones. |
+
+El banco de registros (`NUM_REGS`, puertos), la memoria de datos (`SIZE_WORDS`) y la bóveda
+(`NUM_KEYS`) además tienen sus propios parámetros de módulo.
+
+## 6. Banco de registros (`regfile`)
+
+Archivo: `rtl/regfile.sv`.
+
+### Parámetros
+
+| Parámetro | Valor por defecto | Descripción |
+|:---|:---|:---|
+| `NUM_REGS` | 32 | Registros x0–x31 del ISA. |
+| `XLEN` | 32 | Ancho de cada registro. |
+| `NUM_READ_PORTS` | 8 | Dos lecturas por slot. |
+| `NUM_WRITE_PORTS` | 5 | Una escritura por unidad, dos para la cripto. |
+| `ADDR_W` | `$clog2(NUM_REGS)` | Ancho de las direcciones. |
+
+### Puertos
+
+| Puerto | Ancho | Descripción |
+|:---|:---|:---|
+| `clk`, `reset` | 1 | Reloj y reset síncrono (todos los registros a 0). |
+| `raddr` | `[NUM_READ_PORTS-1:0][ADDR_W-1:0]` | Dirección de cada puerto de lectura. |
+| `rdata` | `[NUM_READ_PORTS-1:0][XLEN-1:0]` | Dato leído (combinacional). |
+| `we` | `[NUM_WRITE_PORTS-1:0]` | Habilitador de cada puerto de escritura. |
+| `waddr` | `[NUM_WRITE_PORTS-1:0][ADDR_W-1:0]` | Destino de cada escritura. |
+| `wdata` | `[NUM_WRITE_PORTS-1:0][XLEN-1:0]` | Dato de cada escritura. |
+
+Asignación de puertos en la configuración completa:
+
+| Puerto de lectura | Slot | Uso |
+|:---|:---|:---|
+| 0, 1 | 0 ALU | `rf1`, `rf2` |
+| 2, 3 | 1 LSU | `rf1` (base), `rf2` (dato de `guardap`/`guardab`) |
+| 4, 5 | 2 BRU | `rf1`, `rf2` de las instrucciones de control; `rf1` de `syer` |
+| 6, 7 | 3 CRIPTO | par fuente `(r1, r1+1)` de `fsl`/`fsli`, o `(rs1, rs2)` de `ell` |
+
+| Puerto de escritura | Slot | Instrucciones |
+|:---|:---|:---|
+| 0 | 0 ALU | tipo registro y tipo inmediato |
+| 1 | 1 LSU | `cargai`, `cargabai` |
+| 2 | 2 BRU | `sye` y `syer` (dirección de retorno) |
+| 3 | 3 CRIPTO | `fsl`/`fsli`: `L_out` hacia `rd` |
+| 4 | 3 CRIPTO | `fsl`/`fsli`: `R_out` hacia `rd+1` |
+
+### Comportamiento
+
+- **x0:** se lee siempre como 0 y las escrituras hacia x0 se descartan en cualquier puerto.
+- **Reset:** síncrono; deja los 32 registros en 0. El banco no trae valores iniciales en el RTL: los
+  valores que necesite un programa los carga el propio programa o el testbench.
+- **Lectura:** combinacional, en la etapa ID.
+- **Escritura:** en el flanco positivo al final de la etapa WB.
+- **Sin bypass:** una lectura en el mismo ciclo de la escritura entrega el valor anterior. El banco
+  no reenvía el dato que se está escribiendo, porque el enunciado prohíbe el forwarding automático
+  entre bundles.
+- **Conflictos:** si dos puertos habilitados escriben el mismo registro en el mismo ciclo, gana el
+  puerto de índice mayor (CRIPTO > BRU > LSU > ALU). Es un error de calendarización del software;
+  `wb` lo señala con su salida `conflict` y el banco se comporta de forma determinista.
+
+### Regla de dependencias de datos
+
+Con el pipeline IF / ID / EX / WB, el bundle N lee sus operandos en ID y escribe su resultado al
+final de WB, dos ciclos después:
+
+```
+ciclo          c      c+1    c+2    c+3
+bundle N       ID     EX     WB          <- escribe en el flanco al final de c+2
+bundle N+1            ID     EX     WB
+bundle N+2                   ID          <- lee en c+2: todavía el valor anterior
+bundle N+3                          ID   <- lee en c+3: valor nuevo
+```
+
+> **El valor que escribe el bundle N lo puede usar el bundle N+3 o uno posterior.** Entre el
+> productor y el consumidor debe haber al menos dos bundles, independientes o NOP.
+
+Además, dentro de un bundle todos los slots leen sus operandos antes de que se escriba cualquier
+resultado del mismo bundle. Por ejemplo, `sumai x2, x2, 1` lee el valor anterior de x2.
+
+Esta regla no está escrita en el ISA de la Entrega 1 y es parte del contrato con el ensamblador y
+con el compilador de CE1108. `tb_regfile_pipeline` la verifica sobre `top`; `tools/assembler.py`
+rechaza los programas que no la cumplen y `tools/bundle_linear.py` la respeta poniendo 2 bundles
+NOP entre instrucciones.
+
+### Integración actual
+
+El banco vive en `top` (instancia `REGFILE`) con la configuración por defecto (8 lecturas y
+5 escrituras), compartido entre los cuatro slots. Las cinco escrituras están conectadas
+directamente a las salidas de `wb`. Las ocho lecturas están conectadas a las direcciones que
+entrega el decoder de cada slot: 0–1 (ALU), 2–3 (LSU), 4–5 (BRU) y 6–7 (CRIPTO).
+
+Lo que se lee del banco en ID pasa por el registro ID/EX (`pipeline_id_ex`) junto con el resto de
+las señales decodificadas. Las unidades de EX deben tomar sus operandos de las salidas de ID/EX y
+nunca directamente de `reg_rdata`, que en ese ciclo ya corresponde al bundle siguiente.
+
+## 7. Writeback (`wb`)
+
+Archivo: `rtl/wb.sv`. Es combinacional y se ubica entre el registro EX/WB y el banco de registros.
+
+Entradas por unidad funcional:
+
+| Señal | Descripción |
+|:---|:---|
+| `<fu>_we` | La instrucción del slot es válida y escribe un registro. Debe ser 0 si el slot es NOP, si el bundle fue anulado por un salto o por una excepción, o si la instrucción no produce resultado (`guardap`, `guardab`, saltos condicionales, `ell`, `vcr`, `camcon`, `setpwd`). |
+| `<fu>_rd` | Registro destino. |
+| `<fu>_data` | Dato a escribir. La cripto entrega `crypto_data_l` y `crypto_data_r`. |
+
+con `<fu>` en `alu`, `lsu`, `bru` y `crypto`.
+
+Salidas:
+
+| Señal | Descripción |
+|:---|:---|
+| `we[4:0]`, `waddr[4:0]`, `wdata[4:0]` | Los cinco puertos de escritura del banco, en el orden de la tabla de la sección 6. |
+| `conflict` | 1 si dos puertos habilitados tienen el mismo destino en el mismo ciclo. |
+
+Reglas:
+
+- Un destino x0 no habilita su puerto.
+- La cripto escribe `rd` y `rd+1`. El ISA exige `rd` par; si `rd = x31`, `rd+1` vale x0 y esa
+  escritura se descarta.
+- Las cuatro unidades pueden escribir en el mismo ciclo; la única restricción es que los destinos
+  sean distintos.
+
+## 8. ALU (`alu`)
+
+Archivo: `rtl/alu.sv`. Es combinacional; recibe el código interno `alu_op` que genera
+`decoder_alu` (definido en `rtl/isa_defs.sv`).
+
+| `alu_op` | Instrucciones del ISA | Operación |
+|:---|:---|:---|
+| `ALU_ADD` | `suma`, `sumai` | `a + b` módulo 2^32 |
+| `ALU_SUB` | `resta`, `restai` | `a - b` módulo 2^32 |
+| `ALU_SLL` | `cizq`, `cizqi` | `a << b[4:0]` |
+| `ALU_SRL` | `cder`, `cderi` | `a >> b[4:0]`, rellena con ceros |
+| `ALU_SRA` | `cader`, `caderi` | `a >>> b[4:0]`, replica el bit de signo |
+| `ALU_XOR` | `xor`, `xori` | `a ^ b` |
+| `ALU_AND` | `and`, `andi` | `a & b` |
+| `ALU_OR` | `or`, `ori` | `a \| b` |
+| `ALU_LT` | `mrq` | 1 si `a < b` con signo, 0 si no |
+| `ALU_GT` | `myq` | 1 si `a > b` con signo, 0 si no |
+| otro | — | 0 |
+
+Convenciones (sección "Convención de comparaciones y de signo" del ISA):
+
+- Las comparaciones interpretan los operandos en complemento a dos.
+- La cantidad de desplazamiento es una magnitud sin signo y se toma de `b[4:0]` (0–31). Un
+  desplazamiento de 32 o más posiciones se reduce módulo 32.
+- El inmediato de 11 bits se extiende con signo en `top`, justo antes de la ALU. Por eso
+  `xori rg, rf1, -1` (pseudo `not`) invierte todos los bits.
+- Suma y resta descartan el acarreo y el desborde; el ISA no define banderas.
+
+## 9. Unidad criptográfica (`crypto_unit`, `key_vault`)
+
+Archivos: `rtl/decoder_crypto.sv` (ID), `rtl/crypto_unit.sv` (EX) y `rtl/key_vault.sv`, que sólo
+se instancia dentro de `crypto_unit`. Ocupa el slot 3 del bundle.
+
+### Instrucciones
+
+| Instrucción | Lee | Hace | Requisito |
+|:---|:---|:---|:---|
+| `fsl rd, r1, LK, RK` | x[r1] = L, x[r1+1] = R | x[rd] = R, x[rd+1] = L ⊕ F(R, K) | AUTH = 1 |
+| `fsli rd, r1, LK, RK` | x[r1] = L, x[r1+1] = R | x[rd] = R ⊕ F(L, K), x[rd+1] = L | AUTH = 1 |
+| `ell LK, off, rs1, rs2` | rs1, rs2 | bóveda[LK][off] = rs1, bóveda[LK][off+1] = rs2 | AUTH = 1 |
+| `vcr dir` | M[dir] | AUTH = (M[dir] == contraseña) | ninguno |
+| `camcon dir, imm` | M[dir] | contraseña = ROL(contraseña, imm), M[dir] = ROL(M[dir], imm) | AUTH = 1 |
+| `setpwd rs` | rs | contraseña = rs, INIT = 0 | INIT = 1 |
+
+con K = bóveda[LK][RK] y F(x, K) = (ROL(x, 5) + K) ⊕ ROL(x, 13). Cifrar un bloque son 4 `fsl`
+con RK = 0, 1, 2, 3 y descifrarlo, 4 `fsli` con RK = 3, 2, 1, 0: es exactamente
+`feistel4_encrypt` y `feistel4_decrypt` del enunciado. `tb_crypto_unit` y `tb_pipeline_cripto`
+incluyen un modelo de referencia de esas funciones, independiente del RTL, para comparar los
+resultados.
+
+### Bóveda y ESTADO
+
+- La bóveda guarda 4 llaves de 128 bits (4 subllaves de 32 bits cada una) y la contraseña de
+  32 bits. Sus únicas salidas son la subllave, que sólo entra al cálculo de la ronda, y
+  `pwd_match`. No hay ningún camino de la bóveda hacia el banco de registros ni hacia la memoria.
+- ESTADO tiene dos bits: AUTH (bit 0) e INIT (bit 1). Sólo los modifican `vcr` y `setpwd`; no se
+  pueden leer ni escribir con instrucciones. Como en el diagrama de organización del grupo, se
+  escribe en WB y se usa en ID para validar cada instrucción cripto (`decoder_crypto`).
+- Reset: AUTH = 0, INIT = 1 y la bóveda se borra completa. Reiniciar el procesador no permite
+  recuperar llaves anteriores; después de un reset hay que volver a hacer `setpwd`, `vcr` y `ell`.
+- Antes de `setpwd` no hay contraseña definida y `vcr` no puede autenticar, ni siquiera con una
+  candidata en 0.
+
+### Excepción de privilegio
+
+`decoder_crypto` valida en ID cada instrucción con el ESTADO de ese ciclo: `fsl`, `fsli`, `ell` y
+`camcon` necesitan AUTH = 1 y `setpwd` necesita INIT = 1. Si no tiene permiso, la marca viaja por
+ID/EX y en EX `crypto_unit` activa `priv_fault` y no ejecuta la instrucción. `top` además:
+
+- anula el bundle completo: la ALU, la LSU, el BRU (un salto no se toma y `sye` o `syer` no
+  escriben su enlace) y la cripto;
+- anula los 2 bundles que están en IF e ID, igual que un salto tomado;
+- carga el PC con `TRAP_VECTOR` (`0x3FF0`, el último bundle de la memoria de instrucciones). Ahí
+  el programa debe tener su manejador;
+- guarda en `trap_pc` el PC del bundle culpable y cuenta las excepciones en `trap_count`. Son
+  registros sólo para observación: el ISA no define cómo leerlos ni cómo volver del manejador.
+
+### Temporización
+
+| Qué | Cuándo se ve el resultado |
+|:---|:---|
+| Par (rd, rd+1) escrito por `fsl` / `fsli` | Desde el bundle N+3, como cualquier registro (regla de la sección 6). |
+| Bóveda (`ell`, `setpwd`, `camcon`) | Se actualiza al final de EX: la instrucción cripto del bundle N+1 ya ve el cambio (por ejemplo, `setpwd` y en el bundle siguiente `vcr`). |
+| ESTADO (`vcr`, `setpwd`) | Se escribe al final de WB y se valida en ID: lo ve el bundle N+3, igual que un registro. Después de `vcr`, el `ell` o `fsl` va 3 bundles después; un segundo `setpwd` dentro de esos 3 bundles todavía pasa. |
+| Memoria escrita por `camcon` | Al final de EX, igual que un `guardap`. |
+
+`vcr` y `camcon` usan el puerto B de la memoria de datos, que es de doble puerto: pueden ir en el
+mismo bundle que una carga o un guardado de la LSU. Si la LSU y `camcon` escriben la misma palabra
+en el mismo ciclo, gana `camcon`; es un error de calendarización.
+
+### Decisiones de diseño a validar con el grupo
+
+- `camcon` rota la contraseña de la bóveda y también la copia en M[dir]. Así la siguiente `vcr` con
+  esa copia sigue autenticando. Así quedó descrito en `ISA_Proyecto.md`.
+- El reset borra la bóveda y vuelve a INIT = 1, lo que permite un nuevo `setpwd` después de cada
+  reset; las llaves anteriores no se pueden recuperar.
+- La memoria de datos pasó a tener dos puertos (A para la LSU, B para la cripto).
+- Observación sobre el algoritmo: F(0, K) = K, así que `fsl` sobre un bloque (0, 0) entrega K en
+  R<sub>out</sub>. Es una propiedad de Feistel4 tal como lo define el enunciado; sólo puede pasar
+  con AUTH = 1.
+
+## 10. Testbenches y cobertura
+
+Testbenches autoverificables:
+
+| Testbench | Qué verifica |
+|:---|:---|
+| `tb_alu` | Parte 1: cada operación con los ejemplos del ISA y casos de borde (acarreo, desborde con signo, desplazamientos de 0, 31 y 32 o más, relleno aritmético, comparaciones con INT_MIN, INT_MAX y -1, códigos no definidos); barrido 13 × 13 de valores especiales y 1000 vectores aleatorios por operación contra un modelo de referencia independiente. Parte 2: las 18 instrucciones ALU del ISA, `mov` y `not`, codificadas en binario y pasando por `decoder_alu`, el banco y la extensión de signo del inmediato hasta la ALU. |
+| `tb_regfile` | Reset, escritura y lectura de los 31 registros por todos los puertos, x0, `we = 0`, ausencia de bypass, 5 escrituras y 8 lecturas simultáneas, conflictos de escritura, reset en medio de la ejecución, 2000 ciclos aleatorios contra un modelo y la configuración de 2 lecturas y 1 escritura. |
+| `tb_wb` | Cada unidad sola, `we = 0`, destino x0, bordes del par de la cripto, bundle completo con 5 escrituras, detección de conflictos, 2000 combinaciones aleatorias contra un modelo y `wb` conectado al banco. |
+| `tb_regfile_pipeline` | Regla de dependencias sobre `top`: lectura a distancias 1, 2, 3 y 4 del productor, inmediato negativo, escritura a x0 y ausencia de conflictos. |
+| `tb_pipeline_integracion` | Programas sobre `top` con los slots ALU, LSU y BRU. A: `guardap`, `guardab`, `cargai` y `cargabai` seguidos, y un NOP en el slot LSU no escribe la memoria (su `lsu_op` es 0, igual que `guardap`). B: un salto no tomado no cuesta ciclos; uno tomado (`igualno`, `sye`, `mayoroigual`) anula exactamente los 2 bundles siguientes y el destino entra a EX 3 ciclos después del salto (penalización de 2 ciclos, sin delay slots); `sye` escribe PC + 16. C: ALU, LSU y BRU en el mismo bundle, y 3 escrituras al banco en el mismo ciclo. D: bucle con salto hacia atrás. E: una función llamada dos veces con `sye` que vuelve con `syer x0, ra, 0` al bundle siguiente al de cada llamada, y `syer` con enlace y offset (destino alineado a 16). Se comprobó que falla si se reintroduce cualquiera de los errores de integración corregidos. |
+| `tb_key_vault` | Reset en cero, 4 llaves cargadas con pares de palabras y leídas por las 16 subllaves, `key_we = 0`, `setpwd`, que no autentique antes de `setpwd` (ni con candidata 0), rotación de la contraseña con 0, 1, 7 y 31, `off` impar, 1000 escrituras aleatorias contra un modelo y reset en medio de la ejecución. |
+| `tb_decoder_crypto` | Las 6 instrucciones con codificaciones generadas por el ensamblador del grupo (los campos coinciden con `tools/assembler.py`), lecturas del banco por instrucción, `we`, campos en sus extremos, slot inactivo (NOP, otros tipos e IDs reservados) y la validación de privilegios de las 6 instrucciones con las 4 combinaciones de AUTH e INIT. |
+| `tb_crypto_unit` | La unidad con su bóveda y el puerto B de la memoria: excepción de cada instrucción privilegiada sin permiso y sin efectos, `setpwd` repetido, `vcr` correcta e incorrecta, carga de las 4 llaves, el vector conocido HOLA2026 → `03D44466 D685AFAF` ronda por ronda, cifrado y descifrado completos con cada llave, 500 rondas aleatorias de `fsl` y `fsli` contra la referencia, `camcon`, `valid_in = 0`, reset en medio de la ejecución y que ESTADO cambie en el flanco de WB y no en el de EX. La validación de ID se modela en el testbench. |
+| `tb_pipeline_cripto` | Programas sobre `top`. A y B: cifrado y descifrado de un archivo de 4 bloques con el programa de ejemplo (`setpwd`, `vcr`, `ell` y un bucle de 4 rondas por bloque) contra la referencia. C: ALU, LSU, BRU y CRIPTO en el mismo bundle, 3 escrituras al banco en el mismo ciclo, `vcr` justo después de `setpwd` y `ell` 3 bundles después de `vcr`. D: excepción por `fsl` sin autenticar, `setpwd` repetido, `ell` después de un `vcr` fallido y `ell` 2 bundles después del `vcr` que autentica (ESTADO todavía sin escribir): bundle completo anulado, 2 bundles anulados, salto al manejador en `TRAP_VECTOR` y `trap_pc`. E: con la llave borrada de registros y memoria el programa cifra bien, y al final ningún registro ni palabra de memoria contiene la llave o la contraseña. Se comprobó que falla si se quita cualquiera de los controles de acceso o de las anulaciones. |
+| `tb_top` | Sistema completo con un programa cargado desde un archivo `.mem` (formato del ensamblador): orden de los slots en el archivo, escrituras de la ALU en orden por las salidas debug (x5 = 50 y x6 = 30), resultado en el banco y que en un mismo ciclo haya 4 bundles distintos en IF, ID, EX y WB. |
+| `tb_fetch` | Reset, PC y bundle pasan sin esperar un flanco y 200 valores aleatorios. |
+| `tb_dispatch` | Cada slot sale de sus 32 bits del bundle, `valid` y 500 bundles aleatorios. |
+| `tb_decoder_alu` | Las 10 instrucciones tipo registro y las 8 tipo inmediato con su código interno y sus campos, campos en sus extremos y otros tipos que no escriben registros. |
+| `tb_pipeline_if_id` | Reset, captura en el flanco, `flush_in`, prioridad del reset y 300 ciclos aleatorios. |
+| `tb_pipeline_id_ex` | Los campos de los 4 slots, el PC y `valid`: reset, captura, `flush`, prioridad del reset y 300 ciclos aleatorios. |
+| `tb_pipeline_ex_wb` | Reset, captura, burbuja con `valid_in = 0` y 300 ciclos aleatorios. |
+
+Los testbenches de las unidades de memoria y control (`tb_lsu`, `tb_bru`, `tb_memory`,
+`tb_decoder_lsu`, `tb_decoder_bru`) también son autoverificables; el detalle de sus casos está en
+el encabezado de cada archivo.
+
+Fuera de `make sim`: `tests/rtl/tb_archivo.sv` (`make archivo`) cifra y descifra un archivo real, y
+`make test-programs` ejecuta los programas de `examples/` sobre el RTL.
+
+## 11. Pendientes
+
+- Validar con el grupo las decisiones de la sección 9 y comunicar a CE1108 cómo se comporta la
+  unidad criptográfica (temporización de la bóveda, `TRAP_VECTOR` y manejador de excepciones).
+- El ensamblador no tiene forma de ubicar código en una dirección fija, así que un programa
+  ensamblado todavía no puede poner su manejador de excepciones en `TRAP_VECTOR`.
+- Comunicar al grupo de CE1108 la regla de dependencias de la sección 6 (el ensamblador ya la
+  verifica) y los cambios del ISA del 11 de octubre: enlace PC + 16 en `sye`, `syer` y `ret`.
