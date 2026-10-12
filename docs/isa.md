@@ -1,34 +1,20 @@
-<div align="center">
+# Especificación del ISA — Proyecto Grupal 1
 
-**Instituto Tecnológico de Costa Rica**<br>
-**Escuela de Ingeniería en Computadores**
-
-CE4301 – Arquitectura de Computadores I
-
-# Avance 2 ISA
-
-**Profesor:**<br>
-Dr.-Ing. Jeferson González Gómez
-
-**Estudiantes:**<br>
-Dylan Guerrero González – 2022016016<br>
-José García Izaguirre – 2022437991<br>
-Javier Hernández Castillo – 2022321746<br>
-Alejandro Vásquez Oviedo - 2019047658<br>
-Fabricio Mena Mejia – 2019042722
-
-**Fecha de Entrega:**<br>
-18 de setiembre
-
-**II Semestre, 2026**
-
-</div>
+> Archivo: `docs/isa.md`  
+> Curso: CE4301 – Arquitectura de Computadores I, II Semestre 2026  
+> Profesor: Dr.-Ing. Jeferson González Gómez  
+> Equipo: Dylan Guerrero González, José García Izaguirre, Javier Hernández Castillo, Alejandro Vásquez Oviedo, Fabricio Mena Mejia
+>
+> - `isa.md` describe el contrato visible al programador: formato de bundle y slots, codificación binaria, set de instrucciones, modos de direccionamiento, registros, gestión de la bóveda de llaves desde el punto de vista del programador, y la *instruction reference sheet* (green card).
+> - [`microarchitecture.md`](microarchitecture.md) describe cómo se implementa: diagrama de bloques, pipeline, dispatch de los slots, unidades funcionales, banco de registros y memorias.
+>
+> Los cambios posteriores al ISA deben comunicarse formalmente al grupo de CE1108, dado su impacto directo en el generador de código.
 
 ---
 
 ## Contenido
 
-- [Avance 2 ISA](#avance-2-isa)
+- [Especificación del ISA — Proyecto Grupal 1](#especificación-del-isa--proyecto-grupal-1)
   - [Contenido](#contenido)
   - [Justificación General](#justificación-general)
     - [Convención de comparaciones y de signo (aplica a todo el ISA)](#convención-de-comparaciones-y-de-signo-aplica-a-todo-el-isa)
@@ -70,7 +56,6 @@ Fabricio Mena Mejia – 2019042722
   - [Pseudoinstrucciones:](#pseudoinstrucciones)
   - [Registros de propósito general](#registros-de-propósito-general)
   - [Resumen de la arquitectura](#resumen-de-la-arquitectura)
-  - [Diagrama de organización de la arquitectura](#diagrama-de-organización-de-la-arquitectura)
     - [Formato del bundle VLIW](#formato-del-bundle-vliw)
     - [Formato general de un slot de 32 bits](#formato-general-de-un-slot-de-32-bits)
   - [Green card del ISA](#green-card-de-la-isa-del-proyecto-vliw)
@@ -467,7 +452,7 @@ Los bits `AUTH` e `INIT` **no son accesibles** mediante instrucciones de carga/a
 | `camcon` | Requiere `AUTH = 1`. | Excepción (sin rotar la contraseña) |
 | `fsl`, `fsli` | Requieren `AUTH = 1`. | Excepción (sin consumir subllave) |
 
-Cualquier intento de ejecutar una instrucción privilegiada sin cumplir su condición de acceso genera una **excepción de privilegio** (trap de seguridad). La excepción detiene la ejecución del bundle actual y transfiere el control a una dirección de manejo a definir en la microarquitectura. En la implementación actual esa dirección es `TRAP_VECTOR` = 0x3FF0, el último bundle de la memoria de instrucciones; el bundle que provoca la excepción se anula completo, igual que los 2 que lo siguen en el pipeline.
+Cualquier intento de ejecutar una instrucción privilegiada sin cumplir su condición de acceso genera una **excepción de privilegio** (trap de seguridad). La excepción detiene la ejecución del bundle actual y transfiere el control a la dirección del manejador, que fija la microarquitectura (`TRAP_VECTOR`, ver [microarchitecture.md](microarchitecture.md#excepción-de-privilegio)).
 
 #### Flujo de autenticación típico
 
@@ -785,7 +770,7 @@ Se definieron cuatro operaciones de salto condicional: `igualsi`, `igualno`, `me
 
 **Política adoptada: vaciado de pipeline (flush) sin ranuras de retardo (delay slots).**
 
-Toda instrucción de salto de la arquitectura — los saltos condicionales igualsi, igualno, menora y mayoroigual, y los saltos incondicionales sye y syer del tipo salto — se evalúa en la etapa EX del pipeline, que es donde la unidad BRU calcula la condición y la dirección destino. Cuando el salto se toma, los bundles que ya ingresaron al pipeline detrás de él, es decir los que en ese ciclo ocupan las etapas IF e ID (2 bundles en la organización de cuatro etapas presentada en la sección [Diagrama de organización de la arquitectura](#diagrama-de-organización-de-la-arquitectura)), se anulan: no escriben el banco de registros, ni la memoria, ni la bóveda de llaves, ni el registro ESTADO. El siguiente bundle que se ejecuta es el de la dirección destino.
+Toda instrucción de salto de la arquitectura — los saltos condicionales igualsi, igualno, menora y mayoroigual, y los saltos incondicionales sye y syer del tipo salto — se evalúa en la etapa EX del pipeline, que es donde la unidad BRU calcula la condición y la dirección destino. Cuando el salto se toma, los bundles que ya ingresaron al pipeline detrás de él, es decir los que en ese ciclo ocupan las etapas IF e ID (2 bundles en la organización de cuatro etapas descrita en [microarchitecture.md](microarchitecture.md)), se anulan: no escriben el banco de registros, ni la memoria, ni la bóveda de llaves, ni el registro ESTADO. El siguiente bundle que se ejecuta es el de la dirección destino.
 
 La arquitectura no define delay slots: el bundle inmediatamente posterior a un salto tomado nunca se ejecuta. Quien genera el código, sea el ensamblador propio o el compilador del grupo de contraparte, no debe rellenar ninguna ranura de retardo después de un salto ni insertar NOPs por causa de él.
 
@@ -1100,10 +1085,6 @@ Las resuelve el ensamblador
 | Memoria | 64 KB mínimo, byte-direccionable, little-endian, direcciones de 32 bits | Requisito del enunciado. |
 | Bóveda de llaves | 4 llaves × 128 bits (4 subllaves de 32 bits) + contraseña de 32 bits | Sólo accesible por la unidad criptográfica. |
 | Calendarización | Estática. Sin forwarding, sin stalls. | Requisito del enunciado. |
-
-## Diagrama de organización de la arquitectura
-
-![Diagrama de organización de la arquitectura](img/diagrama_organizacion.png)
 
 ### Formato del bundle VLIW
 

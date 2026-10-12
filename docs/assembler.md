@@ -77,11 +77,11 @@ de los saltos y los ciclos, sin descontar la penalización de flush; por eso
 puede pedir NOP adicionales en destinos de saltos. No inserta ni reordena código.
 La revisión cubre registros, no alias de memoria ni latencias de la bóveda.
 
-Los alias siguen el ABI de `ISA_Proyecto.md`: `ra=x1`, `sp=x2`, `gp=x3`,
+Los alias siguen el ABI de [isa.md](isa.md): `ra=x1`, `sp=x2`, `gp=x3`,
 `t0..t11=x4..x15`, `s0..s15=x16..x31`.
 
 ## Referencias
 
-La referencia es [ISA_Proyecto.md](../ISA_Proyecto.md) de este repositorio. 
+La referencia es [isa.md](isa.md) de este repositorio. 
 `make test-programs` ejecuta los ejemplos sobre el RTL, cripto incluida, y
 `make archivo` verifica el cifrado de un archivo contra la referencia.

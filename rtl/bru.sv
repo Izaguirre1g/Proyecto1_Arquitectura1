@@ -149,7 +149,7 @@ assign target_pc    = pc_branch_target;
 
 
 // ============================================================================
-// Link value: rg = PC + 16, el bundle siguiente (ISA_Proyecto.md).
+// Link value: rg = PC + 16, el bundle siguiente (docs/isa.md).
 // Registrado un ciclo para llegar a WB en el momento correcto.
 // ============================================================================
 

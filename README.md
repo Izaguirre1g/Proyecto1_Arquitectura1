@@ -24,11 +24,13 @@ tools/                 scripts auxiliares
   load_file.py, extract_data.py — carga/descarga de memoria
 examples/              programas de ejemplo (.asm) y archivos de prueba
 docs/                  documentación
+  isa.md                         — especificación del ISA y green card
+  microarchitecture.md           — organización interna: diagrama de bloques y pipeline
   simulation.md                  — flujo de simulación (del equipo)
   assembler.md                   — sintaxis del ensamblador (Javier)
   compiler-integration.md        — integración con el compilador de CE1108 (Javier)
   mapa_memoria.md                — mapa de memoria 64 KB (Alejandro)
-ISA_Proyecto.md        especificación del ISA
+img/                   diagrama de organización (lo usa docs/microarchitecture.md)
 ```
 
 ## Bloque LSU / BRU / Memoria (Alejandro)

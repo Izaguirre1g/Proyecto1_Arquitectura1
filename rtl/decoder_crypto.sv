@@ -12,7 +12,7 @@
    - Tipo = 7'b0000010 (TYPE_CRYPTO)
    - ID   = 0000 fsl, 0001 fsli, 0010 ell, 0011 vcr, 0100 camcon, 0101 setpwd
 
- Formatos (ISA_Proyecto.md, "Instrucciones tipo cripto"):
+ Formatos (docs/isa.md, "Instrucciones tipo cripto"):
 
    fsl / fsli   tipo | id | LK [20:19] | RK  [18:17] | rd  [16:12] | r1  [11:7] | RSV
    ell          tipo | id | LK [20:19] | off [18:17] | rs1 [16:12] | rs2 [11:7] | RSV
