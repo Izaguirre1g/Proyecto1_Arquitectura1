@@ -155,3 +155,40 @@ La sección 6.2 de CE4301 exige ejecutar al menos un programa generado por la
 contraparte y verificar su resultado. No impone expresamente que esa
 demostración tenga estructuras de control; los requisitos completos del
 compilador corresponden al enunciado de CE1108.
+
+## Operadores aritméticos con bucles internos
+
+El generador de Compiladores admite `euclides` (división con signo), `euler`
+(residuo) y `descartes` (potencia con exponente entero no negativo). Los bucles
+son código generado para esas operaciones; no son la traducción general de
+`whale`, `whether` ni funciones del lenguaje.
+
+`run_ce1108_source.py` usa `bundle_control.py` para asignar ALU, LSU y saltos
+directos a sus slots. El adaptador conserva dos NOP entre instrucciones y
+coloca los destinos sobre dos NOP, también para saltos hacia atrás.
+`bundle_linear.py` sigue disponible con su comportamiento anterior.
+
+Desde Arquitectura, con ambos repositorios como carpetas hermanas:
+
+```bash
+python3 tools/run_ce1108_source.py \
+  --compiler-root "../Proyecto-Parte-1-Compiladores-e-Interpretes-Definici-n-de-Sintaxis-de-Lenguaje" \
+  --input "../Proyecto-Parte-1-Compiladores-e-Interpretes-Definici-n-de-Sintaxis-de-Lenguaje/examples/division_residuo_potencia.bal" \
+  --expect-memory "../Proyecto-Parte-1-Compiladores-e-Interpretes-Definici-n-de-Sintaxis-de-Lenguaje/examples/division_residuo_potencia.memory.json" \
+  --cycles 20000
+```
+
+El resultado esperado es q=-3, r=-2 y p=1024. `--cycles` fija el presupuesto de
+simulación: un bucle ejecuta más instrucciones que las almacenadas una sola vez.
+Sin esa opción, se conserva el presupuesto anterior para programas lineales.
+
+Los operadores nuevos modifican x8–x15 además de los registros de expresión
+x4–x7. El llamador debe preservar cualquier temporal vivo. Las etiquetas
+`__gb_div_` y `__gb_pow_` pertenecen al generador, y el backend debe resolverlas
+con el layout final de bundles.
+
+División por cero y potencia con exponente negativo se rechazan si son
+literales detectables. Para valores recibidos por variables, el código se
+detiene en un salto estable sin escribir el resultado. Las pruebas negativas
+verifican que se conserva el destino anterior y no se ejecuta lo que sigue;
+eso no representa terminación normal del programa.

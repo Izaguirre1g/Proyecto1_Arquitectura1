@@ -12,11 +12,11 @@ import sys
 
 if __package__:
     from .assembler import AssemblyError, assemble_source, integer
-    from .bundle_linear import bundle_linear
+    from .bundle_control import bundle_control
     from .run_program import ROOT, SimulationError, run_logged, run_program, tool
 else:
     from assembler import AssemblyError, assemble_source, integer
-    from bundle_linear import bundle_linear
+    from bundle_control import bundle_control
     from run_program import ROOT, SimulationError, run_logged, run_program, tool
 
 
@@ -29,7 +29,7 @@ HEADERS = ('include/ast.h', 'include/lexer.h', 'include/token.h',
            'Analisis_Sintactico/parser.h', 'src/lexer.l')
 
 
-def compile_driver(compiler_root: Path, work: Path, include_dirs=()) -> Path:
+def compile_driver(compiler_root: Path, work: Path, include_dirs=(), cycles=None) -> Path:
     compiler_root = compiler_root.resolve()
     required = [compiler_root / p for p in MODULES + HEADERS]
     missing = [str(p) for p in required if not p.is_file()]
@@ -69,7 +69,7 @@ def read_memory_expected(path: Path) -> dict[int, int]:
 
 
 def run_source(compiler_root: Path, source: Path, expected_path: Path,
-               work: Path, include_dirs=()) -> dict[int, int]:
+               work: Path, include_dirs=(), cycles=None) -> dict[int, int]:
     compiler_root, source, work = compiler_root.resolve(), source.resolve(), work.resolve()
     expected_path = expected_path.resolve()
     if work == source.parent or work in source.parents or work == expected_path.parent or work in expected_path.parents:
@@ -87,7 +87,7 @@ def run_source(compiler_root: Path, source: Path, expected_path: Path,
     expected_snapshot.write_bytes(expected_path.read_bytes())
     linear = run_logged([str(executable), str(snapshot)], ROOT, work/'generation.log', 30)
     (work/'program.linear').write_text(linear, encoding='utf-8')
-    bundled = bundle_linear(linear)
+    bundled = bundle_control(linear)
     bundled += '__ce1108_fin: nop | nop | sye x0,__ce1108_fin | nop\n'
     program = assemble_source(bundled)
     asm = work/'source_program.asm'
@@ -106,7 +106,7 @@ def run_source(compiler_root: Path, source: Path, expected_path: Path,
     evidence = work/'evidence.json'
     evidence.write_text(json.dumps(provenance, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
     registers = run_program(asm, work, {3: 0x4000}, vcd=True, expected_memory=expected,
-                            cycles=len(program.bundles) + 12)
+                            cycles=cycles if cycles is not None else len(program.bundles) + 12)
     provenance['status'] = 'PASS'
     evidence.write_text(json.dumps(provenance, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
     return registers
@@ -118,10 +118,11 @@ def main():
     parser.add_argument('--input', required=True, type=Path)
     parser.add_argument('--expect-memory', required=True, type=Path)
     parser.add_argument('--workdir', type=Path, default=ROOT/'build/ce1108_fuente')
+    parser.add_argument('--cycles', type=int, help='ciclos de simulación para bucles internos, por ejemplo 12000')
     parser.add_argument('--include-dir', action='append', type=Path, default=[Path(p) for p in os.environ.get('CE1108_INCLUDE_DIRS', '').split(os.pathsep) if p], help='ruta adicional de cabeceras C')
     args = parser.parse_args()
     try:
-        run_source(args.compiler_root, args.input, args.expect_memory, args.workdir, args.include_dir)
+        run_source(args.compiler_root, args.input, args.expect_memory, args.workdir, args.include_dir, args.cycles)
     except (OSError, ValueError, SimulationError) as exc:
         print(f'Error: {exc}', file=sys.stderr)
         return 1

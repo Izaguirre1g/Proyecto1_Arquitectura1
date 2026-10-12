@@ -141,6 +141,7 @@ test-assembler:
 	python3 -m unittest discover -s tests -p 'test_assembler.py' -v
 	python3 -m unittest discover -s tests -p 'test_isa.py' -v
 	python3 -m unittest discover -s tests -p 'test_bundler.py' -v
+	python3 -m unittest discover -s tests -p 'test_bundle_control.py' -v
 
 # Ejecuta contra el RTL real; falla si el resultado es incorrecto.
 test-programs: check-tools
