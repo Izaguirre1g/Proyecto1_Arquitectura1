@@ -44,7 +44,7 @@ Memoria de datos:
 
 ## 2. Mapa de registros
 
-Es el ABI de `ISA_Proyecto.md` (sección "Registros de propósito general"),
+Es el ABI de [`isa.md`](isa.md) (sección "Registros de propósito general"),
 el mismo que usan los alias del ensamblador.
 
 | Registro | Uso                                       | Notas                              |
