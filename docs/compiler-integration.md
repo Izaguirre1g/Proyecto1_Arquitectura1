@@ -91,12 +91,65 @@ Las excepciones de privilegio mostradas por los casos negativos de
 `tb_pipeline_cripto` son esperadas. Incluyen `ell` a dos bundles de `vcr`,
 antes de que el estado esté disponible. `$finish` indica terminación normal.
 
-## Pendientes de integración
+## Programa desde un archivo fuente
 
-- Registrar la entrega del contrato actualizado al grupo de CE1108.
-- Completar la demostración desde un archivo fuente de CE1108 hasta la
-  ejecución en el procesador, conservando fuente, comandos, código generado
-  y resultado esperado. El caso actual demuestra el subconjunto de expresiones.
+`tools/run_ce1108_source.py` conecta los módulos de CE1108 sin modificar su
+CLI, lexer, gramática ni interfaces. Usa Flex, el parser/AST de Bison, la tabla
+de símbolos y `gb_generar` de la rama `feat-analisis-semantico` (probada en
+`1e1b2f3`). El adaptador recorre una función `main` sin parámetros, asigna las
+variables a palabras sucesivas desde 0x4000 y genera el arranque de gp.
+
+El ejemplo `examples/ce1108_programa.bal` declara a=8 y b=3, calcula r=10 y
+comprueba `valido = (r == 10)`. Todos esos valores se escriben desde el código
+generado. El testbench sólo reinicia el procesador y carga sus instrucciones;
+no precarga gp ni las variables. La memoria esperada es:
+
+| Dirección | Variable | Valor |
+|---|---|---|
+| 0x4000 | a | 8 |
+| 0x4004 | b | 3 |
+| 0x4008 | r | 10 |
+| 0x400c | valido | 1 |
+
+En Ubuntu, además de las herramientas de simulación:
+
+```bash
+sudo apt install build-essential flex uthash-dev
+```
+
+La copia de Compiladores debe contener los módulos de `feat-analisis-semantico`.
+Desde Arquitectura, indicar su ruta real:
+
+```bash
+make ce1108-source CE1108_ROOT="../Proyecto-Parte-1-Compiladores-e-Interpretes-Definici-n-de-Sintaxis-de-Lenguaje"
+make test-ce1108-source CE1108_ROOT="../Proyecto-Parte-1-Compiladores-e-Interpretes-Definici-n-de-Sintaxis-de-Lenguaje"
+```
+
+Se conservan fuente, expectativas, salida lineal, bundles, binario, hexadecimal,
+listado, registros, memoria, logs y ondas en `build/ce1108_fuente/`.
+`evidence.json` registra el commit y las huellas de los módulos utilizados.
+La prueba no informa PASS si gp o alguna palabra esperada difieren.
+Flex genera su archivo C en `build/`, sin escribir en el repositorio externo.
+
+Resultado reproducido: **PASS**, 59 bundles y los cuatro valores correctos.
+Las cuatro pruebas adicionales también pasan: programa original, otro programa
+con valores y asignación distintos, diez fuentes inválidos y un resultado
+esperado incorrecto. Se mantienen las 38 pruebas anteriores del ensamblador y
+las 14 de programas. Los módulos del repositorio externo permanecen intactos.
+
+Esta es una demostración de un programa completo del subconjunto lineal:
+una función `main` con enteros/booleanos, declaraciones inicializadas y
+asignaciones admitidas por la generación básica. El adaptador rechaza ciclos,
+condicionales, funciones adicionales, llamadas, colecciones y operaciones sin
+traducción. No implica que la CLI de CE1108 compile todo el lenguaje.
+El final del programa se convierte en un salto estable mientras el simulador
+comprueba la memoria; no se agrega una instrucción HALT a la ISA.
+
+## Pendientes de coordinación
+
+- Reproducir la nueva demostración en el entorno del equipo y registrar sus
+  resultados en #76; el caso anterior de expresión se conserva como regresión.
+- Registrar la entrega del contrato actualizado al grupo de CE1108 en #20.
 
 La sección 6.2 de CE4301 exige ejecutar al menos un programa generado por la
 contraparte y verificar su resultado. No impone expresamente que esa
