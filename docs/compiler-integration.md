@@ -45,6 +45,7 @@ reúne todos los módulos. En los comandos `make`, `CE1108_ROOT` es la ruta a es
 cd <repositorio de CE1108> && make                 # genera balc
 ./balc -s -m programa.bal                          # programa.asm, .mem y .bin; -m muestra el mapa de memoria
 python3 tools/run_program.py --input programa.asm --expect-memory esperado.json --cycles 100000
+python3 tools/run_program.py --input programa.asm --cycles 100000 --trace   # traza dinámica
 ```
 
 - El `.asm` de `balc` usa nuestra sintaxis, y nuestro ensamblador genera a partir de él un `.mem`
@@ -55,6 +56,12 @@ python3 tools/run_program.py --input programa.asm --expect-memory esperado.json 
   `syer x0, ra, 0` y termina en un bucle. Las variables de `main` quedan en la pila, en
   `0x10000 − marco + desplazamiento` (`-m` muestra el desplazamiento y el marco es el `restai` inicial
   de `main`).
+- **Traza dinámica.** Con `--trace`, `build/program_<nombre>/trace.txt` muestra cada cambio de
+  registro y de memoria, ciclo a ciclo, con el PC y el bundle que lo produjo
+  ([simulation.md](simulation.md), sección 12). Como las variables de `main` viven en la pila, su
+  evolución se ve en las escrituras en memoria. En `factorial.bal`, `resultado` está en `0xFFF8` y la
+  traza muestra cómo pasa por 1, 2, 6, 24 y 120:
+  `grep 'M\[0xfff8\]' build/program_factorial/trace.txt`.
 
 | Programa de ejemplo de CE1108 | Qué ejercita | Resultado en el procesador |
 |:---|:---|:---|
