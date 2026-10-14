@@ -26,6 +26,43 @@ module tb_assembled_program;
             $fatal(1, "[FAIL] conflicto o estado indeterminado de writeback");
     end
 
+    // Traza dinámica (+TRACE=<archivo>): ciclo a ciclo, cada registro escrito
+    // (valor anterior y nuevo), cada escritura en memoria, cada cambio de
+    // ESTADO, cada salto tomado y cada excepción. run_program.py le agrega el
+    // texto del bundle.
+    string  trace_path;
+    integer trace_fd = 0;
+    integer ciclo = 1;          // ciclo 1: el bundle 0 está en IF; llega a WB en el ciclo 4
+    logic [31:0] wb_pc = 0;     // PC del bundle en WB: estaba en EX el ciclo anterior
+
+    always @(posedge clk) begin
+        ciclo <= reset ? 1 : ciclo + 1;
+        wb_pc <= DUT.ex_pc;
+    end
+
+    always @(negedge clk) begin
+        if (trace_fd && !reset) begin
+            for (int p = 0; p < 5; p++)
+                if (DUT.wb_we[p] && DUT.wb_waddr[p] != 5'd0)
+                    $fdisplay(trace_fd, "%0d REG %08x %0d %08x %08x", ciclo, wb_pc, DUT.wb_waddr[p],
+                              DUT.REGFILE.regs[DUT.wb_waddr[p]], DUT.wb_wdata[p]);
+            if (DUT.CRYPTO.auth_we_d || DUT.CRYPTO.init_clr_d)     // ESTADO se escribe al final de WB
+                $fdisplay(trace_fd, "%0d ESTADO %08x %b%b %b%b", ciclo, wb_pc, DUT.CRYPTO.init, DUT.CRYPTO.auth,
+                          DUT.CRYPTO.init_clr_d ? 1'b0 : DUT.CRYPTO.init,
+                          DUT.CRYPTO.auth_we_d ? DUT.CRYPTO.auth_d : DUT.CRYPTO.auth);
+            if (DUT.mem_we)
+                $fdisplay(trace_fd, "%0d MEM %08x %08x %08x %04b", ciclo, DUT.ex_pc, DUT.mem_addr,
+                          DUT.mem_wdata, DUT.mem_be);
+            if (DUT.crypto_mem_we)
+                $fdisplay(trace_fd, "%0d MEM %08x %08x %08x 1111", ciclo, DUT.ex_pc, DUT.crypto_mem_addr,
+                          DUT.crypto_mem_wdata);
+            if (DUT.crypto_fault)
+                $fdisplay(trace_fd, "%0d TRAP %08x %08x", ciclo, DUT.ex_pc, TRAP_VECTOR);
+            else if (DUT.branch_flush)
+                $fdisplay(trace_fd, "%0d JUMP %08x %08x", ciclo, DUT.ex_pc, DUT.bru_target_pc);
+        end
+    end
+
     initial begin
         if (!$value$plusargs("MEM=%s", mem_path) ||
             !$value$plusargs("REGDUMP=%s", dump_path) ||
@@ -34,6 +71,10 @@ module tb_assembled_program;
         if (!$value$plusargs("MEMDUMP=%s", data_dump_path) ||
             !$value$plusargs("CYCLES=%d", cycles))
             $fatal(1, "[FAIL] faltan MEMDUMP o CYCLES");
+        if ($value$plusargs("TRACE=%s", trace_path)) begin
+            trace_fd = $fopen(trace_path, "w");
+            if (!trace_fd) $fatal(1, "[FAIL] no se puede escribir la traza");
+        end
         // La memoria tiene IMEM_BUNDLES entradas. Se reservan 4 ciclos para
         // completar IF -> ID -> EX -> WB -> REGFILE antes de salir de ella.
         if (bundles < 1 || bundles > IMEM_BUNDLES - 4)
@@ -72,6 +113,7 @@ module tb_assembled_program;
         if (DUT.REGFILE.regs[0] !== 32'b0)
             $fatal(1, "[FAIL] x0 dejó de ser cero");
         $display("[OK] programa ejecutado: %0d bundles; 32 registros definidos", bundles);
+        if (trace_fd) $fclose(trace_fd);
         $finish;
     end
 
