@@ -114,11 +114,14 @@ python3 tools/run_program.py --input examples/lsu_isa.asm --expect examples/lsu_
 python3 tools/run_program.py --input examples/bru_isa.asm --expect examples/bru_isa.expected.json --cycles 80
 python3 tools/run_program.py --input examples/subrutina.asm --expect examples/subrutina.expected.json --cycles 60
 python3 tools/run_program.py --input examples/mixto.asm --cycles 60
+python3 tools/run_program.py --input examples/subrutina.asm --cycles 60 --trace   # traza dinámica
 ```
 
 `run_program.py` ensambla el programa, lo carga en la memoria de instrucciones, lo simula y muestra los
 registros distintos de 0. Con `--expect` (registros) y `--expect-memory` (memoria) compara contra un
 JSON como `{"x5": 50}` y termina con error si algo no coincide. Deja todo en `build/program_<nombre>/`.
+Con `--trace` también escribe ahí `trace.txt`, la traza dinámica: cada cambio de registro, de memoria
+o de ESTADO, ciclo a ciclo, con el bundle que lo produjo.
 `mixto.asm` combina las 4 unidades en un mismo bundle y usa las 6 instrucciones cripto; `subrutina.asm`
 llama a una función con `sye` y vuelve con `syer`. Como el ISA no tiene una instrucción para detenerse,
 los programas terminan en un bucle estable.
