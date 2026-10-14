@@ -365,12 +365,29 @@ e indica la línea. No inserta ni reordena código. La revisión cubre registros
 3. Simula los ciclos indicados (`--cycles`); un conflicto de escritura detiene la simulación con error.
 4. Vuelca los registros (`registers.txt`) y la memoria (`memory.txt`) y los compara con `--expect`
    (JSON de registros) y `--expect-memory` (JSON de direcciones).
+5. Con `--trace`, escribe la traza dinámica en `trace.txt`.
 
 Todo queda en `build/program_<nombre>/`, con el `.vcd`. Admite hasta 1020 bundles. Como el ISA no
 tiene una instrucción para detenerse, los programas terminan en un bucle estable
 (`fin: nop | nop | sye x0,fin | nop`). `make test-programs` usa este flujo con los programas de
 `examples/`; la integración con el compilador de CE1108 está en
 [compiler-integration.md](compiler-integration.md).
+
+**Traza dinámica** (`--trace`). `trace.txt` muestra cómo cambia el estado conforme avanza la
+ejecución: una línea por cambio, con el ciclo, el PC y el bundle que lo produjo. Registra los
+registros (valor anterior y nuevo), las escrituras en memoria, los cambios de ESTADO, los saltos
+tomados y las excepciones. Los registros se anotan en WB y lo demás en EX (el bundle 0 llega a WB en
+el ciclo 4), y el bucle final se resume en una línea. Ejemplo con `subrutina.asm`:
+
+```text
+python3 tools/run_program.py --input examples/subrutina.asm --cycles 60 --trace
+
+#  ciclo  PC      cambio                                          bundle (ALU | LSU | BRU | CRIPTO)
+       3  0x0000  salto tomado a 0x0060 (contar)                  nop | nop | sye ra,contar | nop
+       4  0x0000  x1/ra: 0x00000000 -> 0x00000010 (16)            nop | nop | sye ra,contar | nop
+       7  0x0060  x5: 0x00000000 -> 0x00000001 (1)                contar: sumai x5,x5,1 | nop | nop | nop
+       8  0x0080  salto tomado a 0x0010                           nop | nop | syer x0,ra,0 | nop
+```
 
 ## 13. Testbenches y cobertura
 
