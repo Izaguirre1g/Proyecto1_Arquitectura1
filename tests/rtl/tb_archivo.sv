@@ -28,8 +28,15 @@
  Después, "make archivo" extrae cifrado.bin y descifrado.bin con
  tools/extract_data.py y compara descifrado.bin con el archivo original.
 
+ Con +SOLO_DESCIFRAR ("make descifrar") el archivo cargado ya viene cifrado:
+ solo se ejecuta el programa de descifrado, se verifica que no haya
+ excepciones ni cambios fuera del archivo y se guarda descifrado.mem.
+
  Plusargs:
      +CIFRAR=<.mem>  +DESCIFRAR=<.mem>  +DATOS=<.mem>  +BYTES=<tamaño en bytes>
+     +K0=<hex> ... +K3=<hex>  llave (K0 es la de la primera ronda); si no se
+                     indica, se usa la llave fija de los ejemplos
+     +SOLO_DESCIFRAR solo descifra (no necesita +CIFRAR)
      +MAXCICLOS=<n>  límite de ciclos por programa (por defecto 1000000)
 
 ================================================================================
@@ -61,7 +68,7 @@ always #5 clk = ~clk;
 
 
 // ============================================================================
-// Datos fijos: contraseña y llave (las mismas de los ejemplos de docs)
+// Contraseña fija y llave (por defecto, la de los ejemplos de docs)
 // ============================================================================
 
 localparam logic [31:0] BASE = 32'h200;
@@ -116,16 +123,20 @@ endtask
 initial begin
 
     int   cycles_enc, cycles_dec;
-    int   changed, wrong, outside;
+    int   changed, wrong, outside, k_given;
+    bit   solo_descifrar;
+    logic [31:0] k;
 
     clk   = 0;
     reset = 1;
 
-    if (!$value$plusargs("CIFRAR=%s", cifrar_file) ||
+    solo_descifrar = $test$plusargs("SOLO_DESCIFRAR");
+
+    if ((!solo_descifrar && !$value$plusargs("CIFRAR=%s", cifrar_file)) ||
         !$value$plusargs("DESCIFRAR=%s", descifrar_file) ||
         !$value$plusargs("DATOS=%s", datos_file) ||
         !$value$plusargs("BYTES=%d", bytes))
-        $fatal(1, "[FAIL] faltan +CIFRAR, +DESCIFRAR, +DATOS o +BYTES (use make archivo)");
+        $fatal(1, "[FAIL] faltan +CIFRAR, +DESCIFRAR, +DATOS o +BYTES (use make archivo o make descifrar)");
 
     if (!$value$plusargs("MAXCICLOS=%d", max_cycles))
         max_cycles = 1000000;
@@ -136,6 +147,19 @@ initial begin
         $fatal(1, "[FAIL] el archivo debe medir entre 1 y %0d bytes", DMEM_BYTES - BASE);
 
     key = {32'hC3D2_E1F0, 32'h8796_A5B4, 32'h4B5A_6978, 32'h0F1E_2D3C};
+
+    // Llave por parámetro: las 4 palabras o ninguna
+    k_given = 0;
+    if ($value$plusargs("K0=%h", k)) begin key[0] = k; k_given++; end
+    if ($value$plusargs("K1=%h", k)) begin key[1] = k; k_given++; end
+    if ($value$plusargs("K2=%h", k)) begin key[2] = k; k_given++; end
+    if ($value$plusargs("K3=%h", k)) begin key[3] = k; k_given++; end
+
+    if (k_given != 0 && (k_given != 4 || $isunknown(key)))
+        $fatal(1, "[FAIL] la llave necesita 4 palabras hexadecimales: +K0 +K1 +K2 +K3");
+
+    if (solo_descifrar && bytes % 8 != 0)
+        $display("tb_archivo: aviso: un archivo cifrado con Feistel4 mide un múltiplo de 8 bytes");
 
     // Esperar la inicialización de las memorias
     #1;
@@ -156,46 +180,66 @@ initial begin
 
     $display("tb_archivo: %0d bytes en 0x%0h..0x%0h (%0d bloques)", bytes, BASE, fin - 1,
              (fin - BASE) / 8);
+    $display("tb_archivo: llave K0..K3 = %08h %08h %08h %08h", key[0], key[1], key[2], key[3]);
 
 
-    tb_section("2. Cifrado");
+    if (solo_descifrar) begin
 
-    load_program(cifrar_file);
-    run_until_end("cifrado", cycles_enc);
-    $writememh("cifrado.mem", DUT.DMEM.mem);
+        tb_section("2. Descifrado");
 
-    changed = 0;
-    for (int a = BASE / 4; a < fin / 4; a++)
-        if (DUT.DMEM.mem[a] !== original[a])
-            changed++;
+        load_program(descifrar_file);
+        run_until_end("descifrado", cycles_dec);
+        $writememh("descifrado.mem", DUT.DMEM.mem);
 
-    check_true("el cifrado cambió el archivo", changed > 0);
+        outside = 0;
+        for (int a = fin / 4; a < DMEM_BYTES / 4; a++)
+            if (DUT.DMEM.mem[a] !== original[a])
+                outside++;
+
+        check("palabras modificadas después del archivo", outside, 0);
+        $display("tb_archivo: descifrado en %0d ciclos", cycles_dec);
+    end
+    else begin
+
+        tb_section("2. Cifrado");
+
+        load_program(cifrar_file);
+        run_until_end("cifrado", cycles_enc);
+        $writememh("cifrado.mem", DUT.DMEM.mem);
+
+        changed = 0;
+        for (int a = BASE / 4; a < fin / 4; a++)
+            if (DUT.DMEM.mem[a] !== original[a])
+                changed++;
+
+        check_true("el cifrado cambió el archivo", changed > 0);
 
 
-    tb_section("3. Descifrado");
+        tb_section("3. Descifrado");
 
-    load_program(descifrar_file);
-    run_until_end("descifrado", cycles_dec);
-    $writememh("descifrado.mem", DUT.DMEM.mem);
+        load_program(descifrar_file);
+        run_until_end("descifrado", cycles_dec);
+        $writememh("descifrado.mem", DUT.DMEM.mem);
 
 
-    tb_section("4. Comparación con el original");
+        tb_section("4. Comparación con el original");
 
-    wrong   = 0;
-    outside = 0;
+        wrong   = 0;
+        outside = 0;
 
-    for (int a = BASE / 4; a < fin / 4; a++)
-        if (DUT.DMEM.mem[a] !== original[a])
-            wrong++;
+        for (int a = BASE / 4; a < fin / 4; a++)
+            if (DUT.DMEM.mem[a] !== original[a])
+                wrong++;
 
-    for (int a = fin / 4; a < DMEM_BYTES / 4; a++)
-        if (DUT.DMEM.mem[a] !== original[a])
-            outside++;
+        for (int a = fin / 4; a < DMEM_BYTES / 4; a++)
+            if (DUT.DMEM.mem[a] !== original[a])
+                outside++;
 
-    check("palabras del archivo distintas al original", wrong, 0);
-    check("palabras modificadas después del archivo", outside, 0);
+        check("palabras del archivo distintas al original", wrong, 0);
+        check("palabras modificadas después del archivo", outside, 0);
 
-    $display("tb_archivo: cifrado en %0d ciclos, descifrado en %0d ciclos", cycles_enc, cycles_dec);
+        $display("tb_archivo: cifrado en %0d ciclos, descifrado en %0d ciclos", cycles_enc, cycles_dec);
+    end
 
 
     tb_finish("tb_archivo");

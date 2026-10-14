@@ -8,6 +8,8 @@
 #    make list             lista los testbenches disponibles
 #    make archivo          cifra y descifra un archivo en el procesador
 #                          (ARCHIVO=<ruta>, por defecto examples/archivos/mensaje.txt)
+#    make descifrar        descifra un archivo ya cifrado con una llave dada
+#                          (ARCHIVO=<cifrado> LLAVE=<K0,K1,K2,K3>)
 #    make test-assembler   pruebas del ensamblador (no requieren simulador)
 #    make test-programs    ejecuta los programas de examples/ sobre el RTL
 #    make clean            borra build/
@@ -58,7 +60,7 @@ all: sim
 
 
 help:
-	@sed -n '2,21p' Makefile | sed 's/^# \{0,1\}//'
+	@sed -n '2,23p' Makefile | sed 's/^# \{0,1\}//'
 
 
 check-tools:
@@ -141,6 +143,7 @@ test-assembler:
 	python3 -m unittest discover -s tests -p 'test_assembler.py' -v
 	python3 -m unittest discover -s tests -p 'test_isa.py' -v
 	python3 -m unittest discover -s tests -p 'test_bundler.py' -v
+	python3 -m unittest discover -s tests -p 'test_bundle_control.py' -v
 
 # Ejecuta contra el RTL real; falla si el resultado es incorrecto.
 test-programs: check-tools
@@ -170,7 +173,7 @@ archivo: check-tools
 	@mkdir -p $(ARCHIVO_DIR)
 	python3 tools/assembler.py --input examples/cifrar_archivo.asm --output $(ARCHIVO_DIR)/cifrar.mem
 	python3 tools/assembler.py --input examples/descifrar_archivo.asm --output $(ARCHIVO_DIR)/descifrar.mem
-	python3 tools/load_file.py --input "$(ARCHIVO)" --output $(ARCHIVO_DIR)/datos.mem --address 0x200
+	python3 tools/load_file.py --input "$(ARCHIVO)" --address 0x200 --output $(ARCHIVO_DIR)/datos.mem
 	$(IVERILOG) $(IVFLAGS) -s tb_archivo -o $(ARCHIVO_DIR)/sim.vvp $(RTL_SRCS) tests/rtl/tb_archivo.sv
 	@set -o pipefail; n=$$(wc -c < "$(ARCHIVO)"); \
 	( cd $(ARCHIVO_DIR) && $(VVP) $(VVPFLAGS) sim.vvp +CIFRAR=cifrar.mem +DESCIFRAR=descifrar.mem \
@@ -181,3 +184,57 @@ archivo: check-tools
 	    --format bin --output $(ARCHIVO_DIR)/descifrado.bin && \
 	cmp "$(ARCHIVO)" $(ARCHIVO_DIR)/descifrado.bin && \
 	echo "[PASS] $(ARCHIVO): descifrado.bin es idéntico al original ($$n bytes)"
+
+
+# ------------------------------------------------------------------------------
+#  make descifrar ARCHIVO=<cifrado> LLAVE=<K0,K1,K2,K3>
+#
+#  Descifra en el procesador un archivo que ya viene cifrado con Feistel4
+#  (bloques de 8 bytes, L y R en little-endian) usando la llave dada: 4 palabras
+#  de 32 bits en hexadecimal; K0 es la de la primera ronda. Ejecuta solo
+#  examples/descifrar_archivo.asm (tb_archivo con +SOLO_DESCIFRAR) y deja el
+#  resultado en build/descifrar/resultado.bin.
+# ------------------------------------------------------------------------------
+
+comma          := ,
+LLAVE          ?=
+LLAVE_PALABRAS := $(patsubst 0x%,%,$(patsubst 0X%,%,$(subst $(comma), ,$(LLAVE))))
+DESCIFRAR_DIR  := $(BUILD_DIR)/descifrar
+
+.PHONY: descifrar
+descifrar: check-tools
+	@test "$(origin ARCHIVO)" != "file" -a $(words $(LLAVE_PALABRAS)) -eq 4 || { \
+	    echo "Uso: make descifrar ARCHIVO=<archivo cifrado> LLAVE=<K0,K1,K2,K3> (hexadecimal)"; exit 1; }
+	@test -f "$(ARCHIVO)" || { echo "No existe el archivo $(ARCHIVO)"; exit 1; }
+	@mkdir -p $(DESCIFRAR_DIR)
+	python3 tools/assembler.py --input examples/descifrar_archivo.asm --output $(DESCIFRAR_DIR)/descifrar.mem
+	python3 tools/load_file.py --input "$(ARCHIVO)" --address 0x200 --output $(DESCIFRAR_DIR)/datos.mem
+	$(IVERILOG) $(IVFLAGS) -s tb_archivo -o $(DESCIFRAR_DIR)/sim.vvp $(RTL_SRCS) tests/rtl/tb_archivo.sv
+	@set -o pipefail; n=$$(wc -c < "$(ARCHIVO)"); \
+	( cd $(DESCIFRAR_DIR) && $(VVP) $(VVPFLAGS) sim.vvp +SOLO_DESCIFRAR +DESCIFRAR=descifrar.mem \
+	    +DATOS=datos.mem +BYTES=$$n +K0=$(word 1,$(LLAVE_PALABRAS)) +K1=$(word 2,$(LLAVE_PALABRAS)) \
+	    +K2=$(word 3,$(LLAVE_PALABRAS)) +K3=$(word 4,$(LLAVE_PALABRAS)) $(PLUSARGS) 2>&1 | tee sim.log ) && \
+	python3 tools/extract_data.py --memory $(DESCIFRAR_DIR)/descifrado.mem --address 0x200 --size $$n \
+	    --format bin --output $(DESCIFRAR_DIR)/resultado.bin && \
+	echo "[PASS] $(ARCHIVO) descifrado en $(DESCIFRAR_DIR)/resultado.bin" && \
+	{ command -v file > /dev/null && file $(DESCIFRAR_DIR)/resultado.bin || true; }
+
+# Programa fuente de CE1108 usando sus módulos externos.
+CE1108_ROOT ?=
+.PHONY: ce1108-source test-ce1108-source
+ce1108-source: check-tools
+	@test -n "$(CE1108_ROOT)" || { echo "Use make ce1108-source CE1108_ROOT=<repositorio_compiladores>"; exit 1; }
+	IVERILOG=$(IVERILOG) VVP=$(VVP) python3 tools/run_ce1108_source.py --compiler-root "$(CE1108_ROOT)" \
+	    --input examples/ce1108_programa.bal --expect-memory examples/ce1108_programa.memory.json
+
+test-ce1108-source: check-tools
+	@test -n "$(CE1108_ROOT)" || { echo "Indique CE1108_ROOT=<repositorio_compiladores>"; exit 1; }
+	CE1108_ROOT="$(CE1108_ROOT)" IVERILOG=$(IVERILOG) VVP=$(VVP) \
+	    python3 -m unittest discover -s tests -p 'test_ce1108_source.py' -v
+
+.PHONY: compiladores-factorial test-compiladores-funciones
+compiladores-factorial:
+	IVERILOG=$(IVERILOG) VVP=$(VVP) python3 tools/run_ce1108_source.py --functions --compiler-root "$(CE1108_ROOT)" --input "$(CE1108_ROOT)/examples/factorial.bal" --expect-memory examples/compiladores_factorial.memory.json --cycles 20000
+
+test-compiladores-funciones:
+	CE1108_ROOT="$(CE1108_ROOT)" IVERILOG=$(IVERILOG) VVP=$(VVP) python3 -m unittest discover -s tests -p 'test_compiler_functions.py' -v

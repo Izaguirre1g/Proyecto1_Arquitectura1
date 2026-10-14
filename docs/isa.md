@@ -115,12 +115,14 @@ La instrucción `guardap` toma una palabra (32 bits) y la guarda en la direcció
 Ejemplo en ensamblador:
 
 ```
-guardap x3, x8, 5
+guardap x3, x8, 4
 ```
 
-realiza lo siguiente: suponiendo que en `x3` la dirección guardada sea `0x20` entonces toma `0x20`, le suma 5 y en `0x25` guarda el dato que se encuentra en `x8`.
+realiza lo siguiente: suponiendo que en `x3` la dirección guardada sea `0x20` entonces toma `0x20`, le suma 4 y en `0x24` guarda el dato que se encuentra en `x8`. El primer operando es la base de la dirección y el segundo, el dato que se guarda.
 
 Para `guardab` el proceso es el mismo solo que en este caso se guarda un byte (8 bits) en lugar de una palabra completa de 32 bits.
+
+**Alineación:** la memoria se organiza en palabras de 4 bytes. `guardap` y `cargai` usan direcciones múltiplo de 4: los 2 bits más bajos de la dirección se ignoran, así que `0x25` se trata como `0x24`. Para un byte en cualquier dirección se usan `guardab` y `cargabai`.
 
 La instrucción `cargai` permite cargar un dato almacenado en memoria hacia un registro.
 
@@ -452,7 +454,7 @@ Los bits `AUTH` e `INIT` **no son accesibles** mediante instrucciones de carga/a
 | `camcon` | Requiere `AUTH = 1`. | Excepción (sin rotar la contraseña) |
 | `fsl`, `fsli` | Requieren `AUTH = 1`. | Excepción (sin consumir subllave) |
 
-Cualquier intento de ejecutar una instrucción privilegiada sin cumplir su condición de acceso genera una **excepción de privilegio** (trap de seguridad). La excepción detiene la ejecución del bundle actual y transfiere el control a la dirección del manejador, que fija la microarquitectura (`TRAP_VECTOR`, ver [microarchitecture.md](microarchitecture.md#excepción-de-privilegio)).
+Cualquier intento de ejecutar una instrucción privilegiada sin cumplir su condición de acceso genera una **excepción de privilegio** (trap de seguridad). La excepción detiene la ejecución del bundle actual y transfiere el control a la dirección del manejador, que fija la microarquitectura (`TRAP_VECTOR`, ver [microarchitecture.md](microarchitecture.md#riesgos-y-excepción-de-privilegio)).
 
 #### Flujo de autenticación típico
 
@@ -1119,7 +1121,7 @@ Todas las instrucciones miden 32 bits: **Tipo de operación** [31:25] (7 bits) +
 
 | Mnemónico | Nombre | Descripción / ejemplo |
 |---|---|---|
-| `guardap` | Guardar palabra | `M(rf1+offset) = rf2[31:0]`. Ej.: `guardap x3, x8, 5` → si x3 = 0x20, guarda x8 en 0x25. |
+| `guardap` | Guardar palabra | `M(rf1+offset) = rf2[31:0]`. Ej.: `guardap x3, x8, 4` → si x3 = 0x20, guarda x8 en 0x24. La dirección debe ser múltiplo de 4. |
 | `guardab` | Guardar byte | `M(rf1+offset) = rf2[7:0]`. Igual que `guardap` pero solo guarda el byte menos significativo. |
 | `cargai` | Cargar palabra | `rg = M[rf1 + offset]`, con `rg` en [15:11]. Ej.: rf1 = 1000, offset = 20 → rg = M[1020]. |
 | `cargabai` | Cargar byte | `rg = signo(M8[rf1 + offset])`, con `rg` en [15:11]; el byte se extiende con signo. Ej.: rf1 = 2000, offset = 4, M8[2004] = 0x7F → rg = 0x0000007F; si fuera 0xFF → rg = 0xFFFFFFFF. |
