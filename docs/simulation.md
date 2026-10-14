@@ -41,6 +41,7 @@ sudo apt install iverilog gtkwave make python3
 | `make tb_alu` | Ejecuta un solo testbench (recompila solo si cambió algo) |
 | `make waves TB=tb_alu` | Abre su `.vcd` en GTKWave |
 | `make archivo [ARCHIVO=ruta]` | Cifra y descifra un archivo en el procesador (sección 3) |
+| `make descifrar ARCHIVO=ruta LLAVE=K0,K1,K2,K3` | Descifra un archivo que ya viene cifrado, con la llave dada (sección 3) |
 | `make test-assembler`, `make test-programs` | Pruebas del ensamblador y de los programas de `examples/` sobre el RTL |
 | `make list`, `make clean`, `make help` | Lista los testbenches, borra `build/`, muestra la ayuda |
 
@@ -82,6 +83,12 @@ make archivo ARCHIVO=imagen.bmp       # cualquier archivo de hasta 65024 bytes
 Todo queda en `build/archivo/`. Cada bloque de 8 bytes tarda 20 ciclos: 4 rondas, las esperas de la
 regla N+3 y los 2 ciclos del salto del bucle. La comparación del cifrado contra la implementación de
 referencia del enunciado la hacen `tb_crypto_unit` y `tb_pipeline_cripto`.
+
+**Descifrar un archivo recibido** (`make descifrar ARCHIVO=ruta LLAVE=K0,K1,K2,K3`). El mismo testbench,
+con `+SOLO_DESCIFRAR` y la llave en `+K0`…`+K3`, carga el archivo cifrado desde `0x200`, ejecuta solo
+`examples/descifrar_archivo.asm`, verifica que no haya excepciones ni cambios fuera del archivo y guarda
+`descifrado.mem`; `extract_data.py` lo deja en `build/descifrar/resultado.bin`. Supone bloques de 8
+bytes con L y R en *little-endian*, como el código de referencia del enunciado.
 
 ## 4. Flujo de compilación
 

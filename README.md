@@ -71,6 +71,17 @@ Ensambla `examples/cifrar_archivo.asm` y `examples/descifrar_archivo.asm`, carga
 `load_file.py`, simula los dos programas y extrae el resultado con `extract_data.py`. En
 `build/archivo/` quedan `cifrado.bin` y `descifrado.bin`.
 
+Para descifrar un archivo que ya viene cifrado con Feistel4, se indica la llave (4 palabras de 32 bits
+en hexadecimal; K0 es la de la primera ronda):
+
+```bash
+make descifrar ARCHIVO=secreto.bin LLAVE=1A2B3C4D,55667788,99AABBCC,DDEEFF00
+```
+
+Ejecuta solo el programa de descifrar y deja el archivo original en `build/descifrar/resultado.bin`;
+al final muestra qué tipo de archivo es (texto, imagen, etc.). Si el original no medía un múltiplo de
+8 bytes, el resultado termina con hasta 7 bytes en cero, que son el relleno del cifrado.
+
 Las herramientas también se usan por separado:
 
 ```bash
