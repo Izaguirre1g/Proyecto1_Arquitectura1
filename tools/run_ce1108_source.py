@@ -123,7 +123,7 @@ def run_source(compiler_root: Path, source: Path, expected_path: Path,
     expected_registers = {3: 0x4000}
     if functions:
         call = next(b for b in program.bundles if any(i.text == 'sye x1, __demo_main' for i in b.instructions))
-        expected_registers.update({1: call.pc + 16, 2: 0x8000})
+        expected_registers.update({1: call.pc + 16, 2: 0x10000})
         if 0x4000 in expected and expected[0x4000] != 1:
             raise SimulationError('el modo functions reserva 0x4000 para confirmar el retorno')
         expected[0x4000] = 1

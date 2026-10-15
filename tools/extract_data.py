@@ -4,36 +4,31 @@
 #
 #  Descripción
 # -----------------------------------------------------------------------------
-#  Extrae un rango de memoria desde un archivo .mem o un dump de la memoria
+#  Extrae un rango de memoria desde un archivo .mem o un volcado de la memoria
 #  del procesador, y lo convierte a un archivo .bin (binario) o .hex (texto
 #  hexadecimal). Complementa a tools/load_file.py.
 #
-#  El caso de uso principal es: después de correr una simulación que produce
-#  un dump de memoria (por ejemplo en formato .mem o en un dump textual del
-#  testbench), esta herramienta saca un sub-rango para inspeccionar o
-# post-tra-atar (por ejemplo, cargar la salida cifrada en otra herramienta).
+#  El caso de uso principal es: después de una simulación que vuelca la memoria
+#  con $writememh, esta herramienta saca un rango para revisarlo o procesarlo
+#  (por ejemplo, guardar la salida cifrada como un archivo).
 #
 #  Uso
 # -----------------------------------------------------------------------------
 #  python3 tools/extract_data.py --memory <file> --address 0x0 --size N
 #                                  --output <file>  [--format bin|hex]
-#                                  [--mem-width 32|8]
 #
 #  Argumentos
 # -----------------------------------------------------------------------------
-#    --memory <ruta>        Ruta al archivo .mem o .hex de donde extraer.
-#                           - Si termina en .mem se interpreta como archivo
-#                               compatible con $readmemh (palabras de 32 bits
-#                               little-endian, una por línea) o bytes (un
-#                               byte por línea).
-#                           - En cualquier otro caso se interpreta como texto
-#                               hexadecimal libre. (Requerido)
+#    --memory <ruta>        Volcado de memoria de donde extraer: una palabra
+#                           hexadecimal de 32 bits por línea, con los bytes en
+#                           little-endian (el formato de $readmemh y
+#                           $writememh), sin importar la extensión. Se ignoran
+#                           las líneas vacías y los comentarios. (Requerido)
 #    --address <addr>       Direccion inicial (default 0x0).
 #    --size <bytes>         Cantidad de bytes a extraer (default 64).
 #    --output <ruta>        Archivo de salida (default stdout en hex).
-#    --format bin|hex       Formato de salida (default hex).
-#    --mem-width 32|8       Ancho de los valores en el .mem de entrada.
-#                           Default 32 (palabras little-endian).
+#    --format bin|hex       Formato de salida. Si no se indica, es bin cuando
+#                           --output termina en .bin y hex en otro caso.
 #
 #  Ejemplos
 # ----------------------------------------------------------------------------
@@ -69,23 +64,6 @@ def parse_mem_words(path):
     return words
 
 
-def parse_mem_bytes(path):
-    """Lee un .mem de bytes (un byte por línea)."""
-    bytes_out = []
-    with open(path, 'r') as f:
-        for raw_line in f:
-            line = raw_line.strip()
-            if not line or line.startswith('#') or line.startswith('//'):
-                continue
-            line = line.replace('_', '')
-            try:
-                value = int(line, 16)
-            except ValueError:
-                continue
-            bytes_out.append(value & 0xFF)
-    return bytes_out
-
-
 def main():
     parser = argparse.ArgumentParser(
         description="Extrae un rango de memoria y lo convierte a binario o hex"
@@ -101,11 +79,11 @@ def main():
                         help="Cantidad de bytes a extraer (default 64)")
     parser.add_argument("--output", default=None,
                         help="Archivo de salida (default stdout en hex)")
-    parser.add_argument("--format", default="hex", choices=["hex", "bin"],
-                        help="Formato de salida (default hex)")
-    parser.add_argument("--mem-width", type=int, default=32, choices=[8, 32],
-                        help="Ancho de los valores en el .mem (default 32)")
+    parser.add_argument("--format", choices=["hex", "bin"],
+                        help="Formato de salida (default: bin si --output termina en .bin, si no hex)")
     args = parser.parse_args()
+    if args.format is None:
+        args.format = "bin" if args.output and args.output.lower().endswith(".bin") else "hex"
 
     address = int(args.address, 0)
     if address < 0:
@@ -113,14 +91,11 @@ def main():
         sys.exit(1)
 
     # 1) Leer el archivo de entrada
-    if args.mem_width == 32:
-        words = parse_mem_words(args.memory)
-        bytes_mem = bytearray()
-        for word in words:
-            for shift in (0, 8, 16, 24):
-                bytes_mem.append((word >> shift) & 0xFF)
-    else:
-        bytes_mem = bytearray(parse_mem_bytes(args.memory))
+    words = parse_mem_words(args.memory)
+    bytes_mem = bytearray()
+    for word in words:
+        for shift in (0, 8, 16, 24):
+            bytes_mem.append((word >> shift) & 0xFF)
 
     # 2) Sacar el rango pedido
     if address >= len(bytes_mem):

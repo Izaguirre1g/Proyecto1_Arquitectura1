@@ -68,7 +68,7 @@ Se estableció una longitud fija de **32 bits para las instrucciones**, buscando
 
 Como estructura general, las instrucciones utilizan un prefijo compuesto por un **Tipo de operación de 7 bits** y un **ID de operación de 4 bits**. El campo de tipo permite identificar la categoría de la instrucción y asociarla con la unidad funcional correspondiente, mientras que el ID permite seleccionar la operación específica dentro de dicha categoría.
 
-Los campos destinados a registros utilizan **5 bits**, permitiendo identificar hasta 32 registros diferentes. Aunque la arquitectura requiere como mínimo 15 registros de propósito general, se optó por un banco de registros mayor para proporcionar mayor flexibilidad al software.
+Los campos destinados a registros utilizan **5 bits**, permitiendo identificar hasta 32 registros diferentes. El enunciado exige como mínimo 8 registros de propósito general; se optó por 32 porque el hardware no resuelve dependencias de datos: el software debe esperar los resultados con calendarización estática y necesita mantener varios valores vivos a la vez, y la unidad criptográfica trabaja con pares de registros (L, R) para la entrada y la salida de cada ronda. Además, 32 es el máximo que permiten los 5 bits del campo, sin costo extra en la codificación.
 
 Los bits restantes de cada formato se asignan de acuerdo con los operandos y parámetros requeridos por cada unidad funcional. Por esta razón, **no todos los tipos de instrucción utilizan exactamente los mismos campos.**
 
@@ -158,7 +158,7 @@ La instrucción se utiliza cuando se necesita trabajar con datos almacenados en 
 
 ### Justificación de diseño
 
-Se decidió que la palabra fuera de 32 bits para que mantenga coherencia con la estructura general de la arquitectura. Los 5 bits para la identificación de los registros permiten acceder a los 32 registros de propósito general disponibles. Los 4 bits para identificar la operación dentro del tipo se mantienen a pesar de que este tipo concreto de instrucciones pueda operar con solo 2 bits, de esta forma los campos de tipo e ID se mantienen constantes en todos los tipos de operaciones soportadas. El offset ocupa 11 bits, esta cantidad asegura que se puedan alcanzar rangos extensos en la memoria sin preocupaciones.
+Se decidió que la palabra fuera de 32 bits para que mantenga coherencia con la estructura general de la arquitectura. Los 5 bits para la identificación de los registros permiten acceder a los 32 registros de propósito general disponibles. Los 4 bits para identificar la operación dentro del tipo se mantienen a pesar de que este tipo concreto de instrucciones pueda operar con solo 2 bits, de esta forma los campos de tipo e ID se mantienen constantes en todos los tipos de operaciones soportadas. El offset ocupa 11 bits con signo: alcanza de −1024 a +1023 bytes alrededor de la dirección base, suficiente para llegar con una sola instrucción a las variables cercanas a `gp` o a `sp`.
 
 ## Instrucciones tipo inmediato
 
@@ -179,7 +179,7 @@ La distribución de los campos es la siguiente:
 
 Instrucciones:
 
-| Tipo de operación | ID operºación | Instrucción | Operación |
+| Tipo de operación | ID operación | Instrucción | Operación |
 |:---:|:---:|:---|:---|
 | 1000000 | 0000 | `sumai` | rg = rf1 + inmediato |
 | 1000000 | 0001 | `restai` | rg = rf1 - inmediato |
@@ -203,17 +203,17 @@ rg = rf1 + inmediato
 El registro `rf1` contiene el valor 10 y el valor inmediato es 5, al ejecutar la instrucción `sumai` se realiza la operación:
 
 ```
-rg = 10 +5
+rg = 10 + 5 = 15
 ```
 
-La instrucción `restai` realiza una resta entre el valor almacenado en un registro fuente `rf1` y un valor constante inmediato, este se almacena en el registro destino (`rg`)
+La instrucción `restai` realiza una resta entre el valor almacenado en un registro fuente `rf1` y un valor constante inmediato; el resultado se almacena en el registro destino (`rg`).
 
 Ejemplo:
 
 ```
-rg + rf1 – inmediato
+rg = rf1 - inmediato
 
-rg = 10 – 3
+rg = 10 - 3 = 7
 ```
 
 La instrucción `cizqi` realiza un corrimiento de bits hacia la izquierda del valor almacenado en el registro fuente rf1 una cantidad de posiciones indicada por el valor inmediato.
@@ -232,7 +232,7 @@ La instrucción `cderi` realiza un corrimiento de bits hacia la derecha del valo
 Ejemplo:
 
 ```
-rg = fr1 >> inmediato
+rg = rf1 >> inmediato
 00010100 >> 2 = 00000101
 ```
 
@@ -262,19 +262,14 @@ El registro rg almacenará el nuevo valor conservando el signo original
 
 La instrucción `xori` realiza una operación lógica `xor` entre el valor almacenado en el registro `rf1` y un valor inmediato.
 
-La operación es `rf1 xor inmediato`
-
-Por ejemplo:
-
 ```
-rf1 = 1010
-inmediato: 1100
+rg = rf1 xor inmediato
 ```
 
-Por ejemplo:
+Por ejemplo, si `rf1 = 1010` y el inmediato es `1100`:
 
 ```
-La operación 1010 xor 1100 = 0110
+1010 xor 1100 = 0110
 ```
 
 La instrucción `andi` realiza una operación lógica `and` entre el contenido del registro fuente rf1 y un valor inmediato.
@@ -283,24 +278,11 @@ La instrucción `andi` realiza una operación lógica `and` entre el contenido d
 rg = rf1 and inmediato
 ```
 
-Por ejemplo:
-
-```
-rf1 = 1010
-inmediato = 1100
-```
-
-Por ejemplo:
+Por ejemplo, si `rf1 = 1010` y el inmediato es `1100`:
 
 ```
 1010 and 1100 = 1000
 ```
-
-El registro rg almacenará 1000
-
-Ejemplo:
-
-1010 or 1100 = 1110
 
 La instrucción `ori` realiza una operación lógica `or` entre el valor almacenado en el registro fuente rf1 y un valor inmediato.
 
@@ -308,17 +290,15 @@ La instrucción `ori` realiza una operación lógica `or` entre el valor almacen
 rg = rf1 or inmediato
 ```
 
-Por ejemplo:
+Por ejemplo, si `rf1 = 1010` y el inmediato es `1100`:
 
 ```
-rf1 = 1010 e inmediato = 1100
+1010 or 1100 = 1110
 ```
-
-El registro rg almacenará 1110
 
 ### Justificación de diseño
 
-Se eligió este diseño porque permite mantener las instrucciones en 32 bits y aprovechar el espacio de forma equilibrada entre identificación, registros e inmediato. Los campos de 5 bits permiten acceder a los 32 registros de la arquitectura, mientras que 4 bits son suficientes para distinguir las 10 operaciones definidas y dejar espacio para futuras extensiones. Los 11 bits restantes se destinan al inmediato, permitiendo ejecutar operaciones aritméticas, lógicas, desplazamientos y accesos a memoria sin requerir una segunda instrucción para cargar constantes.
+Se eligió este diseño porque permite mantener las instrucciones en 32 bits y aprovechar el espacio de forma equilibrada entre identificación, registros e inmediato. Los campos de 5 bits permiten acceder a los 32 registros de la arquitectura, mientras que 4 bits son suficientes para distinguir las 8 operaciones definidas y dejar espacio para futuras extensiones. Los 11 bits restantes se destinan al inmediato, permitiendo ejecutar operaciones aritméticas, lógicas, desplazamientos y accesos a memoria sin requerir una segunda instrucción para cargar constantes.
 
 ## Instrucciones tipo salto
 
@@ -462,7 +442,7 @@ Cualquier intento de ejecutar una instrucción privilegiada sin cumplir su condi
 2. **Cierre del provisionamiento:** después de una ejecución válida de `setpwd`, `INIT` se limpia a `0`. A partir de ese momento, `setpwd` queda bloqueada aunque `AUTH = 0`.
 3. **Validación:** `vcr` compara la contraseña candidata almacenada en memoria contra la contraseña real residente en la bóveda. Si coinciden, pone `AUTH = 1`; si no, mantiene `AUTH = 0`. El resultado se actualiza únicamente en `ESTADO[0]`, **no** se escribe a memoria ni a registros.
 4. **Uso:** una vez autenticado, el programa puede invocar `ell`, `camcon`, `fsl` y `fsli`. Cualquier intento de bypass produce excepción.
-5. **Bloqueo:** si se desea revocar el acceso, una futura instrucción privilegiada de logout podrá limpiar `AUTH` sin volver a habilitar `INIT`.
+5. **Bloqueo:** para revocar el acceso basta ejecutar `vcr` con una contraseña candidata incorrecta: `AUTH` vuelve a `0` e `INIT` no cambia, así que `setpwd` sigue bloqueada.
 
 Esta política separa el estado de **autenticación** del estado de **provisionamiento**: estar no autenticado no implica tener permiso para cambiar la contraseña maestra. Además, la contraseña real permanece dentro de la bóveda y no necesita exponerse a registros de propósito general después de su inicialización.
 
@@ -495,13 +475,13 @@ La distribución de los campos es la siguiente:
 
 El formato de las instrucciones cripto hereda del prefijo común del ISA (tipo 7 bits + ID operación 4 bits), dejando 21 bits para operandos. Esto mantiene coherencia con los demás tipos. Simplifica el decode del bundle y permite que el dispatcher identifique la FU cripto mirando únicamente el campo tipo.
 
-Para `fsl` y `fsli` se eligió ejecutar una ronda por instrucción, no las cuatro juntas, para exponer paralelismo entre slots del bundle. El direccionamiento de la subllave se divide en `lk` (2 bits, índice de llave) y `rk` (2 bits, índice de subllave o ronda), porque 2 bits permiten indexar 4 elementos y facilita la legibilidad que un solo campo de 4 bits. Los registros `rd` y `rf1` apuntan a pares adyacentes (L, R) por convención, ahorrando 10 bits respecto a codificar los cuatro operandos por separado.
+Para `fsl` y `fsli` se eligió ejecutar una ronda por instrucción, no las cuatro juntas, para exponer paralelismo entre slots del bundle. El direccionamiento de la subllave se divide en `lk` (2 bits, índice de llave) y `rk` (2 bits, índice de subllave o ronda), porque 2 bits permiten indexar 4 elementos y dos campos separados se leen más fácil que un solo campo de 4 bits. Los registros `rd` y `r1` apuntan a pares adyacentes (L, R) por convención, ahorrando 10 bits respecto a codificar los cuatro operandos por separado.
 
 `ell` se eligió escribir 64 bits por invocación, dos palabras con rs1 y rs2, en lugar de 32 bits. Esto reduce el número de instrucciones necesarias para cargar una llave completa de 4 a 2, sin superar los 21 bits disponibles.
 
 `vcr`, la validación de credenciales, compara la contraseña candidata (en memoria) directamente contra la contraseña real residente en la bóveda, **sin** pasar la contraseña real por buses de propósito general ni por registros: el dato sensible nunca abandona el hardware de la cripto FU. El resultado de la comparación sólo se refleja en el bit `AUTH` interno (`ESTADO[0]`), sin escribir a memoria de propósito general.
 
-`camcon`, el cambio de contraseña recibe un inmediato de n bits con la cantidad de corrimientos a aplicar sobre la contraseña actual. Codificarlo como inmediato es práctico para una rotación lógica circular.
+`camcon`, el cambio de contraseña, recibe un inmediato de 5 bits con la cantidad de posiciones que se rota la contraseña actual. Codificarlo como inmediato es práctico para una rotación lógica circular.
 
 `setpwd` se reserva para el provisionamiento inicial y utiliza el bit `INIT` de `ESTADO` como condición de acceso. De esta manera, `AUTH = 0` no basta para reconfigurar la contraseña: una ejecución válida de `setpwd` limpia `INIT` y bloquea nuevos intentos fuera de la fase de inicialización.
 
@@ -536,8 +516,8 @@ Descripción de campos:
 | ID | [24:21] | 0000 — opcode de FSL |
 | LK | [20:19] | Índice de llave en la bóveda (0–3) |
 | RK | [18:17] | Índice de subllave dentro de la llave (0–3) |
-| rg | [16:12] | Registro destino L_out; R_out se escribe en rd+1 |
-| rf1 | [11:7] | Registro fuente L_in; R_in se lee de r1+1 |
+| rd | [16:12] | Registro destino L_out; R_out se escribe en rd+1 |
+| r1 | [11:7] | Registro fuente L_in; R_in se lee de r1+1 |
 | RSV | [6:0] | 0000000 — reservados para extensión futura |
 
 Ejemplo en ensamblador:
@@ -549,7 +529,7 @@ fsl rd=6, r1=2, LK=0, RK=1
 Restricciones:
 
 - Requiere `ESTADO[0] = AUTH = 1`; en caso contrario genera **excepción de privilegio**.
-- `rg` y `rf1` deben estar en registros pares a partir de `x2` (registros de la cripto FU).
+- `rd` y `r1` deben ser registros pares de `x2` a `x30`, porque cada uno forma un par con el registro siguiente.
 - `LK` ∈ {0,1,2,3} y `RK` ∈ {0,1,2,3}.
 - La subllave se lee internamente de la bóveda; nunca abandona la bóveda.
 
@@ -579,8 +559,8 @@ Descripción de campos:
 | ID | [24:21] | 0001 — opcode de FSLI |
 | LK | [20:19] | Índice de llave en la bóveda (0–3) |
 | RK | [18:17] | Índice de subllave dentro de la llave (0–3) |
-| rg | [16:12] | Registro destino L_out; R_out se escribe en rd+1 |
-| rf1 | [11:7] | Registro fuente L_in; R_in se lee de r1+1 |
+| rd | [16:12] | Registro destino L_out; R_out se escribe en rd+1 |
+| r1 | [11:7] | Registro fuente L_in; R_in se lee de r1+1 |
 | RSV | [6:0] | 0000000 |
 
 Ejemplo en ensamblador:
@@ -592,7 +572,7 @@ fsli  rd=6, r1=2, LK=0, RK=3
 Restricciones:
 
 - Requiere `ESTADO[0] = AUTH = 1`; en caso contrario genera **excepción de privilegio**.
-- `rg` y `rf1` deben estar en registros pares.
+- `rd` y `r1` deben ser registros pares de `x2` a `x30`.
 - `LK` ∈ {0,1,2,3} y RK ∈ {0,1,2,3}.
 
 #### `ell`
@@ -613,9 +593,9 @@ Descripción de campos:
 | Tipo | [31:25] | 0000010 |
 | ID | [24:21] | 0010 — opcode de ELL |
 | LK | [20:19] | Índice de llave destino en la bóveda (0–3) |
-| off | [18:17] | Offset dentro de la llave (0 = MSW, 3 = LSW) |
-| rf1 | [16:12] | Registro fuente → vault[LK][off] |
-| rf2 | [11:7] | Registro fuente → vault[LK][off+1] |
+| off | [18:17] | Subllave donde se escribe `rs1` (0 o 2); `rs2` va en la siguiente |
+| rs1 | [16:12] | Registro fuente → bóveda[LK][off] |
+| rs2 | [11:7] | Registro fuente → bóveda[LK][off+1] |
 | RSV | [6:0] | 0000000 |
 
 Ejemplo en ensamblador:
@@ -629,7 +609,7 @@ ell    LK=2, off=2, rs1=8, rs2=10
 Restricciones:
 
 - Requiere `ESTADO[0] = AUTH = 1`; en caso contrario genera **excepción de privilegio**.
-- `rf1` y `rf2` pueden ser cualquier registro par.
+- `rs1` y `rs2` pueden ser cualquier registro par.
 - `LK` ∈ {0,1,2,3} y `off` ∈ {0,2} para no desbordar la llave.
 
 #### `vcr`
@@ -772,7 +752,7 @@ Se definieron cuatro operaciones de salto condicional: `igualsi`, `igualno`, `me
 
 **Política adoptada: vaciado de pipeline (flush) sin ranuras de retardo (delay slots).**
 
-Toda instrucción de salto de la arquitectura — los saltos condicionales igualsi, igualno, menora y mayoroigual, y los saltos incondicionales sye y syer del tipo salto — se evalúa en la etapa EX del pipeline, que es donde la unidad BRU calcula la condición y la dirección destino. Cuando el salto se toma, los bundles que ya ingresaron al pipeline detrás de él, es decir los que en ese ciclo ocupan las etapas IF e ID (2 bundles en la organización de cuatro etapas descrita en [microarchitecture.md](microarchitecture.md)), se anulan: no escriben el banco de registros, ni la memoria, ni la bóveda de llaves, ni el registro ESTADO. El siguiente bundle que se ejecuta es el de la dirección destino.
+Toda instrucción de salto de la arquitectura (los saltos condicionales igualsi, igualno, menora y mayoroigual, y los saltos incondicionales sye y syer del tipo salto) se evalúa en la etapa EX del pipeline, que es donde la unidad BRU calcula la condición y la dirección destino. Cuando el salto se toma, los bundles que ya ingresaron al pipeline detrás de él, es decir los que en ese ciclo ocupan las etapas IF e ID (2 bundles en la organización de cuatro etapas descrita en [microarchitecture.md](microarchitecture.md)), se anulan: no escriben el banco de registros, ni la memoria, ni la bóveda de llaves, ni el registro ESTADO. El siguiente bundle que se ejecuta es el de la dirección destino.
 
 La arquitectura no define delay slots: el bundle inmediatamente posterior a un salto tomado nunca se ejecuta. Quien genera el código, sea el ensamblador propio o el compilador del grupo de contraparte, no debe rellenar ninguna ranura de retardo después de un salto ni insertar NOPs por causa de él.
 
@@ -782,7 +762,7 @@ Efecto sobre el estado del procesador. Un bundle anulado no produce ningún efec
 
 #### Justificación de la elección
 
-1. Independencia del ISA respecto de la microarquitectura. La cantidad de delay slots depende del número de etapas y de en cuál de ellas se resuelve el salto. Fijarlos desde ahora ataría el contrato del ISA a un detalle de organización que aún no ha sido diseñada. Con vaciado, si la organización cambia — por ejemplo al separar el acceso a memoria en una etapa adicional — el ISA congelado sigue siendo válido y lo único que varía es el número de ciclos de penalización. Con delay slots, ese mismo cambio invalidaría todo el código ya generado.
+1. Independencia del ISA respecto de la microarquitectura. La cantidad de delay slots depende del número de etapas y de en cuál de ellas se resuelve el salto. Fijarlos en el ISA ataría el contrato a un detalle de la organización interna, que se diseña aparte. Con vaciado, si la organización cambia (por ejemplo, al separar el acceso a memoria en una etapa adicional), el ISA congelado sigue siendo válido y lo único que varía es el número de ciclos de penalización. Con delay slots, ese mismo cambio invalidaría todo el código ya generado.
 
 2. Contrato más simple con el grupo del compilador. El compilador ya asume toda la calendarización estática de los cuatro slots y el manejo de las dependencias de datos, porque el hardware no las resuelve. Obligarlo además a llenar ranuras de retardo aumentaría la complejidad del generador de código sin un beneficio proporcional.
 
@@ -806,7 +786,7 @@ Efecto sobre el estado del procesador. Un bundle anulado no produce ningún efec
 | Campo | Bits | Significado |
 |:---|:---|:---|
 | **Tipo** | [31:25] | 1000001 — identifica las instrucciones de control |
-| **ID** | [24:21] | 0001 — código de la operación |
+| **ID** | [24:21] | Código de la operación: 0001, 0010, 0100 o 1000 |
 | **rf1** | [20:16] | Primer registro fuente de la comparación |
 | **rf2** | [15:11] | Segundo registro fuente de la comparación |
 | **Inmediato** | [10:0] | Desplazamiento relativo en bytes (múltiplo de 16) que se suma al PC cuando la condición se cumple |
@@ -825,7 +805,7 @@ if (rf1 == rf2) PC += inmediato
 
 ```
 # Saltar 4 bundles hacia adelante (64 bytes) si x3 es igual a x4
-igualsi   rf1=3, rf2=4, inmediato=64
+igualsi x3, x4, 64
 ```
 
 **Restricciones:**
@@ -849,7 +829,7 @@ Ejemplo en ensamblador:
 
 ```
 # Saltar 6 bundles hacia adelante (96 bytes) si x5 es diferente de x6
-igualno   rf1=5, rf2=6, inmediato=96
+igualno x5, x6, 96
 ```
 
 **Restricciones:**
@@ -866,14 +846,14 @@ Descripción: Compara los valores contenidos en rf1 y rf2. Si el valor de rf1 es
 **Operación:**
 
 ```
-if (rf1 < rf2) PC += inmediato — comparación con signo
+if (rf1 < rf2) PC += inmediato     (comparación con signo)
 ```
 
 **Ejemplo en ensamblador:**
 
 ```
 # Saltar 3 bundles hacia adelante (48 bytes) si x7 es menor que x8
-menora    rf1=7, rf2=8, inmediato=48
+menora x7, x8, 48
 ```
 
 **Restricciones:**
@@ -890,14 +870,14 @@ Descripción: Compara los valores contenidos en `rf1` y `rf2`. Si el valor de `r
 Operación:
 
 ```
-if (rf1 >= rf2) PC += inmediato — comparación con signo
+if (rf1 >= rf2) PC += inmediato    (comparación con signo)
 ```
 
 Ejemplo en ensamblador:
 
 ```
 # Saltar 5 bundles hacia adelante (80 bytes) si x9 es mayor o igual que x10
-mayoroigual   rf1=9, rf2=10, inmediato=80
+mayoroigual x9, x10, 80
 ```
 
 Restricciones:
@@ -926,10 +906,10 @@ La distribución de los campos es la siguiente:
 |:---|:---|:---|:---|
 | 1101010 | 1000 | `suma` | rg = rf1 + rf2 |
 | 1101010 | 1001 | `resta` | rg = rf1 - rf2 |
-| 1101010 | 1011 | `corrimiento izquierdo` | rg = rf1 << rf2 |
-| 1101010 | 1111 | `corrimiento derecho` | rg = rf1 >> rf2 |
-| 1101010 | 1010 | `corrimiento aritmetico derecho` | rg = rf1 >> rf2 |
-| 1101010<br>1101010 | 1110 | `xor` | rg = rf1 XOR rf2 |
+| 1101010 | 1011 | `cizq` | rg = rf1 << rf2 (corrimiento izquierdo) |
+| 1101010 | 1111 | `cder` | rg = rf1 >> rf2 (corrimiento derecho lógico) |
+| 1101010 | 1010 | `cader` | rg = rf1 >>> rf2 (corrimiento aritmético derecho) |
+| 1101010 | 1110 | `xor` | rg = rf1 XOR rf2 |
 | 1101010 | 1100 | `and` | rg = rf1&rf2 |
 | 1101010 | 1101 | `or` | rg = rf1\|rf2 |
 | 1101010 | 0101 | `mrq` | rg = rf1<rf2 (con signo) |
@@ -941,7 +921,7 @@ La distribución de los campos es la siguiente:
 
 `resta`: resta el contenido de los dos registros `rf1` y `rf2` de 32 bits y los guarda en el registro `rg`.
 
-Corrimiento izquierdo: desplaza los bits de `rf1` hacia la izquierda la cantidad de posiciones indicada por rf2, el resultado se almacena en rg.
+`cizq` (corrimiento izquierdo): desplaza los bits de `rf1` hacia la izquierda la cantidad de posiciones indicada por rf2, el resultado se almacena en rg.
 
 Ejemplo:
 
@@ -951,7 +931,7 @@ Si rf1 = 5 (0101) y rf2 = 2:
 rg = 0101 << 2 = 010100 = 20
 ```
 
-Corrimiento derecho: desplaza los bits de `rf1` hacia la derecha, rellenando con ceros. La cantidad de posiciones es indicada por `rf2`.
+`cder` (corrimiento derecho lógico): desplaza los bits de `rf1` hacia la derecha, rellenando con ceros. La cantidad de posiciones es indicada por `rf2`.
 
 Ejemplo:
 
@@ -961,7 +941,7 @@ Si rf1 = 20 (10100) y rf2 = 2:
 rg = 10100 >> 2 = 00101 = 5
 ```
 
-Corrimiento aritmetico derecho: desplaza los bits de `rf1` hacia la derecha, conservando el bit de signo. La cantidad de posiciones es indicada por `rf2`.
+`cader` (corrimiento aritmético derecho): desplaza los bits de `rf1` hacia la derecha, conservando el bit de signo. La cantidad de posiciones es indicada por `rf2`.
 
 Ejemplo:
 
@@ -1151,10 +1131,10 @@ Todas las instrucciones miden 32 bits: **Tipo de operación** [31:25] (7 bits) +
 
 | Mnemónico | Nombre | Descripción / ejemplo |
 |---|---|---|
-| `igualsi` | Saltar si igual | `if (rf1 == rf2) PC += inm` (inm en bytes, múltiplo de 16). Ej.: `igualsi rf1=3, rf2=4, inmediato=64` salta 4 bundles. |
-| `igualno` | Saltar si no es igual | `if (rf1 != rf2) PC += inm`. Ej.: `igualno rf1=5, rf2=6, inmediato=96` salta 6 bundles. |
-| `menora` | Saltar si menor | `if (rf1 < rf2) PC += inm`, con signo. Ej.: `menora rf1=7, rf2=8, inmediato=48` salta 3 bundles. |
-| `mayoroigual` | Saltar si mayor o igual | `if (rf1 >= rf2) PC += inm`, con signo. Ej.: `mayoroigual rf1=9, rf2=10, inmediato=80` salta 5 bundles. |
+| `igualsi` | Saltar si igual | `if (rf1 == rf2) PC += inm` (inm en bytes, múltiplo de 16). Ej.: `igualsi x3, x4, 64` salta 4 bundles. |
+| `igualno` | Saltar si no es igual | `if (rf1 != rf2) PC += inm`. Ej.: `igualno x5, x6, 96` salta 6 bundles. |
+| `menora` | Saltar si menor | `if (rf1 < rf2) PC += inm`, con signo. Ej.: `menora x7, x8, 48` salta 3 bundles. |
+| `mayoroigual` | Saltar si mayor o igual | `if (rf1 >= rf2) PC += inm`, con signo. Ej.: `mayoroigual x9, x10, 80` salta 5 bundles. |
 
 ## Instrucciones tipo registro
 

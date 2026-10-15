@@ -100,10 +100,10 @@ make test-compiladores-funciones CE1108_ROOT=<ruta>   # 0!, 1!, 5!, 7!, 12! y ca
   son literales; si vienen de una variable, el programa se detiene en un bucle sin escribir el
   resultado. Ejemplo: `division_residuo_potencia.bal` con `--cycles 20000` da q = −3, r = −2 y
   p = 1024.
-- **Funciones** (`--functions`): el código arma `gp = 0x4000` y `sp = 0x8000`, llama a `main` con
-  `sye x1`, guarda y restaura `ra` y `sp`, y al volver escribe 1 en `0x4000` como señal de fin. El
-  factorial usa un marco de 16 bytes (n en `0x7FF4`, resultado en `0x7FF8`, i en `0x7FFC`); 5! ocupa
-  163 bundles.
+- **Funciones** (`--functions`): el código arma `gp = 0x4000` y `sp = 0x10000`, como `balc`, llama
+  a `main` con `sye x1`, guarda y restaura `ra` y `sp`, y al volver escribe 1 en `0x4000` como señal
+  de fin. El factorial usa un marco de 16 bytes (n en `0xFFF4`, resultado en `0xFFF8`, i en
+  `0xFFFC`); 5! ocupa 163 bundles.
 
 ### Expresión lineal
 

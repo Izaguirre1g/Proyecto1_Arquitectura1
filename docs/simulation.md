@@ -67,8 +67,8 @@ también pueden escribir `DUT.IMEM.memory[]` directamente. Para correr un progra
 **Cifrado de un archivo** (`make archivo`):
 
 ```bash
-make archivo                          # examples/archivos/mensaje.txt
-make archivo ARCHIVO=imagen.bmp       # cualquier archivo de hasta 65024 bytes
+make archivo                                         # examples/archivos/mensaje.txt
+make archivo ARCHIVO=examples/archivos/imagen.bmp    # cualquier archivo de hasta 65024 bytes
 ```
 
 1. `tools/assembler.py` ensambla `examples/cifrar_archivo.asm` y `examples/descifrar_archivo.asm`.
@@ -242,7 +242,7 @@ ciclo. Si no tiene permiso, la marca viaja por ID/EX y en EX `top`:
 | Qué | Cuándo se ve |
 |:---|:---|
 | Par `(rd, rd+1)` de `fsl`/`fsli` | Desde el bundle N+3, como cualquier registro |
-| Bóveda (`ell`, `setpwd`, `camcon`) | Desde el bundle N+1: se escribe al final de EX (por ejemplo, `setpwd` y en el siguiente `vcr`) |
+| Bóveda (`ell`, `setpwd`, `camcon`) | Desde el bundle N+1: se escribe al final de EX (por ejemplo, un `vcr` en el bundle siguiente a `setpwd` ya usa la contraseña nueva) |
 | ESTADO (`vcr`, `setpwd`) | Desde el bundle N+3: después de `vcr`, el `ell` o `fsl` va 3 bundles después |
 | Memoria escrita por `camcon` | Al final de EX, igual que un `guardap` |
 
@@ -287,15 +287,14 @@ direcciona la de instrucciones y la LSU solo la de datos.
 | Instrucciones | `0x3FF0` | Manejador de excepciones (`TRAP_VECTOR`) |
 | Datos | `0x0000`–`0x3FFF` | Libre. `make archivo` usa `0x100`–`0x11F` para contraseña, llave y fin, y el archivo desde `0x200` |
 | Datos | `0x4000`–`0x7FFF` | Datos globales, a partir de `gp = 0x4000` |
-| Datos | `0x8000`–`0xFFFF` | Pila (crece hacia abajo desde `0x10000`) y heap |
+| Datos | `0x8000`–`0xFFFF` | Pila (crece hacia abajo desde `0x10000`) |
 
 Los rangos siguen la convención de RISC-V del puntero global: con `gp = 0x4000`, cada variable global
 se alcanza en una sola instrucción con un offset de −1024 a 1023 bytes. Es un acuerdo del software
 que también usa el compilador de CE1108; la memoria no lo impone.
 
 **Archivos `.mem` de datos.** `tools/load_file.py` convierte cualquier archivo en un `.mem` para
-`$readmemh`, con una palabra de 32 bits por línea (el formato de `memory.sv`). La opción
-`--word-width 8` escribe un byte por línea y no sirve para `memory.sv`. En un `.hex`, un valor de
+`$readmemh`, con una palabra de 32 bits por línea (el formato de `memory.sv`). En un `.hex`, un valor de
 hasta `0xFF` se toma como un byte y uno mayor como una palabra; cualquier otro archivo (`.txt`, `.bin`,
 imágenes) se carga byte por byte. `tools/extract_data.py` hace lo inverso: saca un rango de un volcado
 de memoria (`$writememh`) a `.bin` o `.hex`.

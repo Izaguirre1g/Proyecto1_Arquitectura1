@@ -12,7 +12,7 @@
 #  Uso
 # -----------------------------------------------------------------------------
 #  python3 tools/load_file.py --input archivo --output memory.mem --address 0x1000
-#                              [--size 65536] [--word-width 32]
+#                              [--size 65536]
 #
 #  Argumentos
 # -----------------------------------------------------------------------------
@@ -28,16 +28,12 @@
 #    --size <bytes>         Tamaño total de la imagen de memoria (default 65536).
 #                           El archivo .mem se rellena con ceros hasta este
 #                           tamaño para que $readmemh no lea basura.
-#    --word-width           32 (palabras de 32 bits little-endian, una por línea
-#                           en el .mem) o 8 (un byte por línea). Default 32.
 #
 #  Formato .mem generado
 # -----------------------------------------------------------------------------
-#  El archivo contiene una dirección de palabra (en hex) por línea. Las palabras
-#  no escritas explícitamente se rellenan con 0. El ancho depende de
-#  --word-width:
-#     8:  dos caracteres hexadecimales (00..FF)
-#    32:  ocho caracteres hexadecimales (00000000..FFFFFFFF)
+#  Una palabra de 32 bits por línea, con 8 dígitos hexadecimales y los bytes en
+#  little-endian (el formato de rtl/memory.sv). Las palabras que el archivo no
+#  ocupa quedan en 0.
 #
 #  Ejemplos
 # ----------------------------------------------------------------------------
@@ -48,12 +44,6 @@
 #  2. Cargar un archivo hex a partir de 0x4000 (datos):
 #       python3 tools/load_file.py --input datos.hex --address 0x4000 \
 #                                     --output build/data.mem
-#
-#  3. Generar imagen completa de 16 KB con un byte por línea (no sirve para
-#     memory.sv, que lee palabras de 32 bits):
-#       python3 tools/load_file.py --input imagen.bin --address 0x0 \
-#                                     --output build/imagen.mem \
-#                                     --size 16384 --word-width 8
 #
 # =============================================================================
 
@@ -106,7 +96,7 @@ def parse_binary(data):
     return list(data)
 
 
-def load_file(input_path, base=0, size=65536, word_width=32):
+def load_file(input_path, base=0, size=65536):
     """Lee el archivo de entrada y devuelve la imagen de memoria como dict
     {dirección_byte: byte}.
 
@@ -154,26 +144,18 @@ def load_file(input_path, base=0, size=65536, word_width=32):
     return image, size
 
 
-def write_mem(image, output_path, size, word_width):
+def write_mem(image, output_path, size):
     """Escribe la imagen en formato .mem compatible con $readmemh."""
     with open(output_path, 'w') as f:
-        if word_width == 8:
-            # Un byte por línea, en orden ascendente de dirección.
-            for addr in range(size):
-                byte = image.get(addr, 0)
-                f.write(f"{byte:02x}\n")
-        elif word_width == 32:
-            # Una palabra de 32 bits por línea, little-endian.
-            for word_addr in range(size // 4):
-                base = word_addr * 4
-                b0 = image.get(base + 0, 0)
-                b1 = image.get(base + 1, 0)
-                b2 = image.get(base + 2, 0)
-                b3 = image.get(base + 3, 0)
-                word = b0 | (b1 << 8) | (b2 << 16) | (b3 << 24)
-                f.write(f"{word:08x}\n")
-        else:
-            raise ValueError(f"word_width no soportado: {word_width}")
+        # Una palabra de 32 bits por línea, little-endian.
+        for word_addr in range(size // 4):
+            base = word_addr * 4
+            b0 = image.get(base + 0, 0)
+            b1 = image.get(base + 1, 0)
+            b2 = image.get(base + 2, 0)
+            b3 = image.get(base + 3, 0)
+            word = b0 | (b1 << 8) | (b2 << 16) | (b3 << 24)
+            f.write(f"{word:08x}\n")
 
 
 def main():
@@ -193,20 +175,18 @@ def main():
     parser.add_argument("--size", type=int, default=65536,
                         help="Tamano total de la imagen de memoria "
                              "(default 65536)")
-    parser.add_argument("--word-width", type=int, default=32,
-                        help="Ancho en bits por linea del .mem (default 32)")
     args = parser.parse_args()
 
     address = int(args.address, 0)
 
-    image, size = load_file(args.input, base=address, size=args.size,
-                            word_width=args.word_width)
+    image, size = load_file(args.input, base=address, size=args.size)
 
     os.makedirs(os.path.dirname(os.path.abspath(args.output)) or ".", exist_ok=True)
-    write_mem(image, args.output, size, args.word_width)
+    write_mem(image, args.output, size)
 
-    print(f"[load_file] {len(image)} bytes cargados en {args.output} "
-          f"(address=0x{address:x}, tamano=0x{size:x})")
+    zona = f"zona 0x{address:04x}-0x{address + len(image) - 1:04x}" if image else "sin datos"
+    print(f"[load_file] {len(image)} bytes cargados en {args.output}: {zona} "
+          f"(imagen de 0x{size:x} bytes)")
 
 
 if __name__ == "__main__":
