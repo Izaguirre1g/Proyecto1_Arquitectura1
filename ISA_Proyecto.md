@@ -1,2 +1,0 @@
-Registros tipo R
-

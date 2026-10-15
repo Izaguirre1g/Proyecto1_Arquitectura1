@@ -1,0 +1,5 @@
+# Productos de simulación (make sim)
+build/
+*.vcd
+*.vvp
+__pycache__/

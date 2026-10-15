@@ -1,0 +1,133 @@
+# Integración con CE1108
+
+Contrato de interfaz entre nuestro procesador y el compilador del grupo de Compiladores (CE1108), y
+evidencia de la validación conjunta (sección 6 del enunciado). Nuestro ensamblador funciona sin el
+compilador y cubre el 100 % del ISA.
+
+## Contrato
+
+- Codificación exacta de cada instrucción y green card: [isa.md](isa.md). Sintaxis del ensamblador:
+  [simulation.md](simulation.md), sección 12.
+- Bundle de 128 bits; el PC avanza 16 bytes. Orden del fuente: `ALU | LSU | BRU | CRIPTO`, con la ALU
+  en los bits bajos. NOP es la palabra 0 en cualquier slot.
+- Registros: x0 = 0, x1 = `ra`, x2 = `sp`, x3 = `gp` (`0x4000`), x4–x15 temporales y x16–x31
+  preservados entre llamadas.
+- Regla N+3: un valor escrito en el bundle N se lee desde el N+3; entre productor y consumidor van 2
+  bundles independientes o NOP.
+- `sye` y `syer` guardan PC + 16; `ret` equivale a `syer x0, ra, 0`. Los saltos relativos van en bytes
+  desde el PC del bundle, en múltiplos de 16.
+- `.mem`: 32 dígitos hexadecimales por bundle para la memoria de instrucciones. `.bin`: 16 bytes
+  *little-endian* por bundle.
+- No hay instrucción para detenerse: un programa termina en un bucle estable.
+
+**Entrega del contrato.** El repositorio de Compiladores tiene la rama `docs/contrato-arquitectura`
+(commit `d772425`, 11 de octubre de 2026) con copias de `isa.md` y de la sintaxis del ensamblador, ya
+con `syer`, el enlace PC + 16 y la regla N+3. Su backend (`docs/backend_binario.md`) codifica los
+bundles según ese contrato.
+
+## Formas de ejecutar código de CE1108
+
+| Forma | Comando | Qué demuestra |
+|:---|:---|:---|
+| Compilador `balc` | `balc -s` y `tools/run_program.py` | Programas completos: bucles, condiciones, funciones y matrices |
+| Generador de funciones | `make compiladores-factorial` | Factorial con llamada, marco de pila y retorno |
+| Programa fuente lineal | `make ce1108-source` | Declaraciones y asignaciones, sin precargar memoria |
+| Operadores con bucles | `tools/run_ce1108_source.py` | División, residuo y potencia |
+| Expresión lineal | `tools/run_ce1108.py` | La primera salida del generador |
+
+Requisitos para compilar el código de CE1108: `sudo apt install build-essential flex uthash-dev` y una
+copia de su repositorio. Las pruebas se hicieron con su rama `development` (commit `2ee0fa8`), que
+reúne todos los módulos. En los comandos `make`, `CE1108_ROOT` es la ruta a esa copia.
+
+### Compilador `balc`
+
+```bash
+cd <repositorio de CE1108> && make                 # genera balc
+./balc -s -m programa.bal                          # programa.asm, .mem y .bin; -m muestra el mapa de memoria
+python3 tools/run_program.py --input programa.asm --expect-memory esperado.json --cycles 100000
+python3 tools/run_program.py --input programa.asm --cycles 100000 --trace   # traza dinámica
+```
+
+- El `.asm` de `balc` usa nuestra sintaxis, y nuestro ensamblador genera a partir de él un `.mem`
+  idéntico byte por byte al de `balc`. Su `.bin` es un contenedor (encabezado de 48 bytes, código y
+  datos) cuya sección de código coincide con nuestro `.bin`; no se carga directamente en la memoria de
+  instrucciones.
+- El programa arma `gp = 0x4000` y `sp = 0x10000`, llama a `main` con `syer x1, x13, 0`, vuelve con
+  `syer x0, ra, 0` y termina en un bucle. Las variables de `main` quedan en la pila, en
+  `0x10000 − marco + desplazamiento` (`-m` muestra el desplazamiento y el marco es el `restai` inicial
+  de `main`).
+- **Traza dinámica.** Con `--trace`, `build/program_<nombre>/trace.txt` muestra cada cambio de
+  registro y de memoria, ciclo a ciclo, con el PC y el bundle que lo produjo
+  ([simulation.md](simulation.md), sección 12). Como las variables de `main` viven en la pila, su
+  evolución se ve en las escrituras en memoria. En `factorial.bal`, `resultado` está en `0xFFF8` y la
+  traza muestra cómo pasa por 1, 2, 6, 24 y 120:
+  `grep 'M\[0xfff8\]' build/program_factorial/trace.txt`.
+
+| Programa de ejemplo de CE1108 | Qué ejercita | Resultado en el procesador |
+|:---|:---|:---|
+| `factorial.bal` | Bucle y multiplicación | 5! = 120 |
+| `ejercicio2_busqueda_matriz.bal` | Matriz, bucles anidados y condiciones | Fila 0, columna 1 |
+| `ejercicio3_puntajes.bal` | Funciones anidadas y control | 24, 0, 13 y 37 |
+| `llamadas.bal` | Funciones con parámetros | 14 |
+| `division_residuo_potencia.bal` | División, residuo y potencia | −3, −2 y 1024 |
+| `multiplicacion.bal` | Multiplicación con negativos | −42 |
+
+En los 6 programas `sp` termina en `0x10000` y la dirección 0 no cambia.
+
+### Módulos de CE1108 con nuestros adaptadores
+
+`tools/run_ce1108_source.py` compila los módulos de CE1108 (lexer de Flex, parser, tabla de símbolos y
+generadores) con un pequeño programa en C (`tools/ce1108_source.c` o, con `--functions`,
+`tools/ce1108_functions.c`), sin modificarlos. Convierte su salida en bundles con
+`tools/bundle_linear.py` (solo ALU y LSU) o `tools/bundle_control.py` (también saltos, etiquetas y
+retornos, con 2 NOP entre instrucciones y antes de cada destino; un salto condicional fuera de rango
+pasa a ser la condición inversa más un `sye`). Después ensambla y ejecuta en `top`. Guarda fuente,
+código generado, registros, memoria, ondas y un `evidence.json` con los commits y las huellas de los
+módulos en `build/ce1108_fuente/`.
+
+```bash
+make ce1108-source CE1108_ROOT=<ruta>                 # examples/ce1108_programa.bal
+make test-ce1108-source CE1108_ROOT=<ruta>            # 8 pruebas del modo fuente
+make compiladores-factorial CE1108_ROOT=<ruta>        # factorial de 5
+make test-compiladores-funciones CE1108_ROOT=<ruta>   # 0!, 1!, 5!, 7!, 12! y casos de error
+```
+
+- **Programa fuente** (`examples/ce1108_programa.bal`): una `main` sin parámetros con enteros y
+  booleanos. El programa inicializa `gp` y las variables, sin precarga del testbench: a = 8, b = 3,
+  r = 10 y valido = 1 quedan en `0x4000`–`0x400C`.
+- **Operadores con bucles**: `euclides` (división con signo), `euler` (residuo) y `descartes`
+  (potencia). Usan x8–x15 además de x4–x7. Una división por cero o un exponente negativo se rechazan si
+  son literales; si vienen de una variable, el programa se detiene en un bucle sin escribir el
+  resultado. Ejemplo: `division_residuo_potencia.bal` con `--cycles 20000` da q = −3, r = −2 y
+  p = 1024.
+- **Funciones** (`--functions`): el código arma `gp = 0x4000` y `sp = 0x10000`, como `balc`, llama
+  a `main` con `sye x1`, guarda y restaura `ra` y `sp`, y al volver escribe 1 en `0x4000` como señal
+  de fin. El factorial usa un marco de 16 bytes (n en `0xFFF4`, resultado en `0xFFF8`, i en
+  `0xFFFC`); 5! ocupa 163 bundles.
+
+### Expresión lineal
+
+```bash
+python3 tools/run_ce1108.py --input examples/ce1108.linear
+```
+
+`examples/ce1108.linear` viene del
+[commit 4f225a0 de CE1108](https://github.com/Izaguirre1g/Proyecto-Parte-1-Compiladores-e-Interpretes-Definici-n-de-Sintaxis-de-Lenguaje/commit/4f225a0f34bac7adf9934181ebc8d0772589b242):
+6 instrucciones para `r : (a gauss b) neumann 1;`, que el adaptador lleva a 16 bundles. El testbench
+precarga `gp = 0x4000`, a = 8 y b = 3, y comprueba r = 10 en `0x4008`.
+
+## Resultados
+
+Reproducidos el 13 de octubre de 2026 con Icarus Verilog 12.0 y la rama `development` de CE1108
+(`2ee0fa8`):
+
+| Prueba | Resultado |
+|:---|:---|
+| `make sim` | 21 PASS, 0 FAIL |
+| `make test-assembler` | 44 pruebas correctas; cubren las 34 instrucciones |
+| `make test-programs` | 14 pruebas correctas |
+| `balc` con los 6 programas de ejemplo | 6 de 6 correctos |
+| `make ce1108-source` y `make test-ce1108-source` | PASS y 8 de 8 |
+| `make compiladores-factorial` y `make test-compiladores-funciones` | PASS y 3 de 3 |
+| `division_residuo_potencia.bal` con `run_ce1108_source.py` | PASS |
+| `tools/run_ce1108.py` | PASS: (8 + 3) − 1 = 10 |
