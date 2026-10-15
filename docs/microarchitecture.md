@@ -34,6 +34,14 @@ entra uno nuevo por ciclo. No hay etapa MEM: la memoria de datos se accede en EX
 La ALU llega a WB por `pipeline_ex_wb`; la LSU, la BRU y la cripto registran su resultado
 internamente, con la misma latencia.
 
+**Bóveda escrita en EX.** La bóveda se escribe al final de EX, como la memoria de datos, y no en WB.
+Es seguro porque un bundle que llega a EX ya no se puede anular: los saltos y la excepción se
+resuelven en EX y solo anulan los bundles de IF e ID, o al propio bundle con la excepción, que
+entonces no escribe. La ventaja es que las instrucciones que leen la bóveda (la ronda Feistel, y
+`vcr` y `camcon` con la contraseña) también están en EX: una llave cargada con `ell` en el bundle N se
+puede usar desde el N+1 (en WB sería desde el N+2), y no hace falta llevar los 64 bits de la llave por
+el registro EX/WB.
+
 **Ejemplo.** Desde el ciclo 4 hay un bundle distinto en cada etapa:
 
 | Ciclo | IF | ID | EX | WB |
@@ -85,4 +93,4 @@ el ciclo 5 entra a IF el bundle destino. `tb_top` comprueba los 4 bundles a la v
 | EX | `rtl/alu.sv`, `rtl/lsu.sv`, `rtl/memory.sv`, `rtl/bru.sv`, `rtl/crypto_unit.sv`, `rtl/key_vault.sv` |
 | WB | `rtl/pipeline_ex_wb.sv`, `rtl/wb.sv` |
 | Integración | `rtl/top.sv` (conexiones, flush y excepción) y `rtl/isa_defs.sv` (códigos y parámetros) |
-| Pruebas | Un testbench por módulo en `tb/` más `tb_top`, `tb_pipeline_integracion` y `tb_pipeline_cripto` sobre el procesador completo ([simulation.md](simulation.md), sección 13) |
+| Pruebas | Un testbench por módulo en `tb/` (`pc_branch` e `instruction_memory` se prueban dentro de `top`) más `tb_top`, `tb_pipeline_integracion` y `tb_pipeline_cripto` sobre el procesador completo ([simulation.md](simulation.md), sección 13) |
