@@ -62,9 +62,9 @@ procesador, y comprueba que el resultado sea idéntico al original. Sirve para c
 de hasta 65024 bytes:
 
 ```bash
-make archivo                                   # texto: examples/archivos/mensaje.txt
-make archivo ARCHIVO=foto.bmp                  # imagen
-make archivo ARCHIVO=datos.bin                 # binario
+make archivo                                         # texto: examples/archivos/mensaje.txt
+make archivo ARCHIVO=examples/archivos/imagen.bmp    # imagen BMP de 64 × 48
+make archivo ARCHIVO=examples/archivos/datos.bin     # binario de 1000 bytes
 ```
 
 Ensambla `examples/cifrar_archivo.asm` y `examples/descifrar_archivo.asm`, carga el archivo con
@@ -75,10 +75,10 @@ Para descifrar un archivo que ya viene cifrado con Feistel4, se indica la llave 
 en hexadecimal; K0 es la de la primera ronda):
 
 ```bash
-make descifrar ARCHIVO=secreto.bin LLAVE=1A2B3C4D,55667788,99AABBCC,DDEEFF00
+make descifrar ARCHIVO=examples/archivos/secreto.bin LLAVE=1A2B3C4D,55667788,99AABBCC,DDEEFF00
 ```
 
-Ejecuta solo el programa de descifrar y deja el archivo original en `build/descifrar/resultado.bin`;
+`examples/archivos/secreto.bin` es un texto cifrado con esa llave. Ejecuta solo el programa de descifrar y deja el archivo original en `build/descifrar/resultado.bin`;
 al final muestra qué tipo de archivo es (texto, imagen, etc.). Si el original no medía un múltiplo de
 8 bytes, el resultado termina con hasta 7 bytes en cero, que son el relleno del cifrado.
 
@@ -93,7 +93,7 @@ Las herramientas también se usan por separado:
     --format bin --output cifrado.bin
 ```
 
-`load_file.py` informa cuántos bytes cargó y en qué dirección. Solo los `.hex` se leen como texto
+`load_file.py` informa cuántos bytes cargó y la zona de memoria que ocupan. Solo los `.hex` se leen como texto
 hexadecimal; cualquier otro archivo se carga byte por byte.
 
 ## Ensamblador y programas
