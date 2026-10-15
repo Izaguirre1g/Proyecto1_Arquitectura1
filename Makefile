@@ -12,6 +12,13 @@
 #                          (ARCHIVO=<cifrado> LLAVE=<K0,K1,K2,K3>)
 #    make test-assembler   pruebas del ensamblador (no requieren simulador)
 #    make test-programs    ejecuta los programas de examples/ sobre el RTL
+#
+#  Integración con CE1108 (CE1108_ROOT=<repositorio de Compiladores>):
+#    make ce1108-source                programa fuente examples/ce1108_programa.bal
+#    make test-ce1108-source           pruebas del modo fuente
+#    make compiladores-factorial       factorial con el generador de funciones
+#    make test-compiladores-funciones  pruebas del generador de funciones
+#
 #    make clean            borra build/
 #    make help             muestra esta ayuda
 #
@@ -60,7 +67,7 @@ all: sim
 
 
 help:
-	@sed -n '2,23p' Makefile | sed 's/^# \{0,1\}//'
+	@sed -n '2,30p' Makefile | sed 's/^# \{0,1\}//'
 
 
 check-tools:
