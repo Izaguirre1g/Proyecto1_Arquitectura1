@@ -24,9 +24,9 @@ static int generar(const Ast *ast, FILE *salida) {
     if (!estado && mem_asignar_proyecto(&tabla, 0x4000, 65536, 1020, &mapa) != MEM_PROYECTO_OK)
         estado = 1;
     if (!estado) {
-        /* gp=0x4000 y sp=0x8000; la llamada fija ra con PC+16. */
+        /* gp=0x4000 y sp=0x10000; la llamada fija ra con PC+16. */
         fputs("sumai x3, x0, 1\ncizqi x3, x3, 14\n"
-              "sumai x2, x0, 1\ncizqi x2, x2, 15\n"
+              "sumai x2, x0, 1\ncizqi x2, x2, 16\n"
               "sye x1, __demo_main\n"
               "sumai x4, x0, 1\nguardap x3, x4, 0\n"
               "sye x0, __demo_done\n__demo_main:\n", salida);
