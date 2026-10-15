@@ -6,7 +6,7 @@
  ------------------------------------------------------------------------------
  Unidad de carga / almacenamiento (slot 1 del bundle).
 
- Instrucciones soportadas (decodificadas en bobbin_lsu):
+ Instrucciones soportadas (decodificadas en decoder_lsu):
      OP_GUARDAP    M[rf1+off]   = rf2[31:0]    palabra 32 bits
      OP_GUARDAB    M[rf1+off]   = rf2[7:0]     1 byte
      OP_CARGAI     rg           = M[rf1+off]   palabra 32 bits
