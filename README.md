@@ -86,15 +86,16 @@ Las herramientas también se usan por separado:
 
 ```bash
 # Archivo → imagen de memoria para $readmemh, desde la dirección 0x200
-./tools/load_file.py --input mensaje.txt --output build/datos.mem --address 0x200
+./tools/load_file.py --input examples/archivos/mensaje.txt --output build/datos.mem --address 0x200
 
 # Imagen de memoria → archivo (por ejemplo, un volcado después de cifrar)
 ./tools/extract_data.py --memory build/archivo/cifrado.mem --address 0x200 --size 392 \
-    --format bin --output cifrado.bin
+    --output build/cifrado.bin
 ```
 
-`load_file.py` informa cuántos bytes cargó y la zona de memoria que ocupan. Solo los `.hex` se leen como texto
-hexadecimal; cualquier otro archivo se carga byte por byte.
+`load_file.py` informa cuántos bytes cargó y la zona de memoria que ocupan. Solo los `.hex` se leen
+como texto hexadecimal; cualquier otro archivo se carga byte por byte. `extract_data.py` escribe
+binario si la salida termina en `.bin` y texto hexadecimal en otro caso (`--format` lo fuerza).
 
 ## Ensamblador y programas
 
