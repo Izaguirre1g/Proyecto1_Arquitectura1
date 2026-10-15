@@ -27,7 +27,8 @@
 #    --address <addr>       Direccion inicial (default 0x0).
 #    --size <bytes>         Cantidad de bytes a extraer (default 64).
 #    --output <ruta>        Archivo de salida (default stdout en hex).
-#    --format bin|hex       Formato de salida (default hex).
+#    --format bin|hex       Formato de salida. Si no se indica, es bin cuando
+#                           --output termina en .bin y hex en otro caso.
 #
 #  Ejemplos
 # ----------------------------------------------------------------------------
@@ -78,9 +79,11 @@ def main():
                         help="Cantidad de bytes a extraer (default 64)")
     parser.add_argument("--output", default=None,
                         help="Archivo de salida (default stdout en hex)")
-    parser.add_argument("--format", default="hex", choices=["hex", "bin"],
-                        help="Formato de salida (default hex)")
+    parser.add_argument("--format", choices=["hex", "bin"],
+                        help="Formato de salida (default: bin si --output termina en .bin, si no hex)")
     args = parser.parse_args()
+    if args.format is None:
+        args.format = "bin" if args.output and args.output.lower().endswith(".bin") else "hex"
 
     address = int(args.address, 0)
     if address < 0:
